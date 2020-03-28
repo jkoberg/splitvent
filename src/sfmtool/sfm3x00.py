@@ -1,51 +1,29 @@
 
-
-from ctypes import c_uint8, c_uint16, c_uint32, cast, pointer, POINTER
-from ctypes import create_string_buffer, Structure
 from fcntl import ioctl
-import struct, time
+import struct, time, collections
 
 
 """Pure-python interface for SFM3X00 mass flow sensors"""
 
-# I2C C API constants (from linux kernel headers)
-I2C_M_TEN             = 0x0010  # this is a ten bit chip address
-I2C_M_RD              = 0x0001  # read data, from slave to master
-I2C_M_STOP            = 0x8000  # if I2C_FUNC_PROTOCOL_MANGLING
-I2C_M_NOSTART         = 0x4000  # if I2C_FUNC_NOSTART
-I2C_M_REV_DIR_ADDR    = 0x2000  # if I2C_FUNC_PROTOCOL_MANGLING
-I2C_M_IGNORE_NAK      = 0x1000  # if I2C_FUNC_PROTOCOL_MANGLING
-I2C_M_NO_RD_ACK       = 0x0800  # if I2C_FUNC_PROTOCOL_MANGLING
-I2C_M_RECV_LEN        = 0x0400  # length will be first received byte
+I2C_SLAVE             = 0x0703  #  Linux Kernel Constant
 
-I2C_SLAVE             = 0x0703  # Use this slave address
-I2C_SLAVE_FORCE       = 0x0706  # Use this slave address, even if
-                                # is already in use by a driver!
-I2C_TENBIT            = 0x0704  # 0 for 7 bit addrs, != 0 for 10 bit
-I2C_FUNCS             = 0x0705  # Get the adapter functionality mask
-I2C_RDWR              = 0x0707  # Combined R/W transfer (one STOP only)
-I2C_PEC               = 0x0708  # != 0 to use PEC with SMBus
-I2C_SMBUS             = 0x0720  # SMBus transfer
-
-
-CMD_START_FLOW = struct.pack(">H", 0x1000)
-CMD_START_TEMP = struct.pack(">H", 0x1000)
-CMD_RESET = struct.pack(">H", 0x2000)
-CMD_RD_SCALE = struct.pack(">H", 0x30de)
-CMD_RD_OFFSET = struct.pack(">H", 0x30df)
-CMD_RD_SERNUM_1 = struct.pack(">H", 0x31ae)
-CMD_RD_SERNUM_2 = struct.pack(">H", 0x31af)
+CMD_START_FLOW =   struct.pack(">H", 0x1000)
+CMD_START_TEMP =   struct.pack(">H", 0x1000)
+CMD_RESET =        struct.pack(">H", 0x2000)
+CMD_RD_SCALE =     struct.pack(">H", 0x30de)
+CMD_RD_OFFSET =    struct.pack(">H", 0x30df)
+CMD_RD_SERNUM_1 =  struct.pack(">H", 0x31ae)
+CMD_RD_SERNUM_2 =  struct.pack(">H", 0x31af)
 CMD_RD_ARTICLE_1 = struct.pack(">H", 0x31e3)
 CMD_RD_ARTICLE_2 = struct.pack(">H", 0x31e4)
 
-VOL_L_MIN = -1.0
-VOL_L_MAX = 5.0
-
-FLOW_SLM_MIN = -75.0
-FLOW_SLM_MAX = 75.0
+RASPI_DEFAULT_I2C_BUS = 1
+SENSIRION_SFM3x00_I2C_ADDR = 0x40
 
 class SFM3x00(object):
-    def __init__(self, bus=1, address=0x40):
+    """Read Sensirion SFM3x00 sensor readings over I2C"""
+    
+    def __init__(self, bus=RASPI_DEFAULT_I2C_BUS, address=SENSIRION_SFM3x00_I2C_ADDR):
         self.address = address
         self._device = None
         if bus is not None:
@@ -58,6 +36,10 @@ class SFM3x00(object):
         if self._device is not None:
             self.close()
         self._device = open('/dev/i2c-{0}'.format(bus), 'r+b', buffering=0)
+        self._select_device(self.address)
+        self.offset = self.read_offset()
+        self.scale = self.read_scale()
+        self.serial_number = self.read_serial_number()
         
     def close(self):
         if self._device is not None:
@@ -72,34 +54,15 @@ class SFM3x00(object):
         self.close()
         return False
 
-    def pos_raw(self, vmin, vmax, width, val, refval=0.0, mark="#"):
-        clamped = max(min(val, vmax), vmin)
-        scaled = int((clamped - vmin) * (width / (vmax - vmin)))
-        scaled0 = int((refval - vmin) * (width / (vmax - vmin))) 
-        pstr = [" "] * width
-        pstr[scaled0] = "|"
-        pstr[scaled] = "#"
-        return "".join(pstr)
-
-    def pos_slm(self, val, width=40):
-        return self.pos_raw(FLOW_SLM_MIN, FLOW_SLM_MAX, width, val)
-
-    def pos_l(self, val, width=40):
-        return self.pos_raw(VOL_L_MIN, VOL_L_MAX, width, val)
-
     def _select_device(self, addr):
-        """Set the address of the device to communicate with on the I2C bus."""
         ioctl(self._device.fileno(), I2C_SLAVE, addr & 0x7F)
         
     def write_bytes(self, bytes):
         assert self._device is not None, 'Bus must be opened before operations are made against it!'
-        self._select_device(self.address)
         return self._device.write(bytes)
 
     def read_bytes(self, number):
-        """Read many bytes from the specified device."""
         assert self._device is not None, 'Bus must be opened before operations are made against it!'
-        self._select_device(self.address)
         return self._device.read(number)
     
     def start_sensor(self):
@@ -123,54 +86,120 @@ class SFM3x00(object):
         self.write_bytes(CMD_RD_SCALE)
         bytes = self.read_bytes(3)
         return struct.unpack(">H", bytes[:2])[0]
-                         
-
-        
-if __name__ == "__main__":
-    dwell = 0.020
-    n_readings = 0
-    with SFM3x00() as s:
-        print("Serial Number: {}".format(s.read_serial_number()))
-        offset = s.read_offset()
-        print("Value offset: {}".format(offset))
-        scale = s.read_scale()
-        print("Value scale: {}".format(scale))
-        print("Starting flow measurements")
-        s.start_sensor()
+    
+    def scale_value(self, value):
+        return (value - self.offset) / float(self.scale)
+    
+    def readings(self, dwell=0.010):
+        self.start_sensor()
         time.sleep(0.100)
-        total_volume = 0.0
+        self.read_value()
         last_t = time.time()
-        last_print = last_t
-        t = last_t
+        time.sleep(dwell)
+        t0 = time.time()        
+        n = 0 
         while True:
+            value = self.read_value()
+            t = time.time()
             deltaT = t - last_t
-            value = s.read_value()
-            slm = (value - offset) / float(scale) 
+            slm = self.scale_value(value)
+            yield (n, t, deltaT, slm)
+            n = n + 1
+            t_next = (n * dwell) + t0
+            t_sleep = t_next - t
+            last_t = t
+            time.sleep(max(0,t_sleep))
+            
+            
+
+
+
+VOL_L_MIN = -1.0
+VOL_L_MAX = 5.0
+
+FLOW_SLM_MIN = -75.0
+FLOW_SLM_MAX = 75.0
+
+def pos_raw(vmin, vmax, width, val, refval=0.0, mark="#"):
+    "Yield a string that represents a gauge, with a marker at a positions corresponding to val"
+    clamped = max(min(val, vmax), vmin)
+    scaled = int((clamped - vmin) * (width / (vmax - vmin)))
+    scaled0 = int((refval - vmin) * (width / (vmax - vmin))) 
+    pstr = [u" "] * width
+    pstr[scaled0] = u"."
+    pstr[scaled] = u"\u2588"
+    return u"".join(pstr)
+
+def pos_slm(val, width=40):
+    "format slm gauge string"
+    return pos_raw(FLOW_SLM_MIN, FLOW_SLM_MAX, width, val)
+
+def pos_l(val, width=40):
+    "format volume gauge string"
+    return pos_raw(VOL_L_MIN, VOL_L_MAX, width, val)
+        
+        
+class FlowPrinter(object):
+    "Consume the readings from a SFM3x00, accumulate volume, and print"
+    def __init__(self, sensor):
+        self.sensor = sensor
+        
+    def print_header(self):
+        s = self.sensor
+        print("Serial Number: {}".format(s.serial_number))
+        print("Value offset: {}".format(s.offset))
+        print("Value scale: {}".format(s.scale))
+        print("Starting flow measurements")
+        
+    def volume_loop(self, readings):
+        total_volume = 0.0
+        for r in readings:
+            n, t, deltaT, slm = r
             sl = (deltaT / 60.0) * slm
             total_volume = total_volume + sl
-            n_readings = n_readings + 1
-            t_str = time.strftime("%H:%M:%S", time.localtime(t))
-	    if n_readings % 10 == 0:
-                print(u"{:>8} dT {:>6.1f}ms | {:>10.2f} slm | {} | {} | {:>10.1f} cc".format(t_str, deltaT*1000, slm, s.pos_slm(slm), s.pos_l(total_volume), total_volume*1000))
-            last_t = t
-            time.sleep(dwell)
-            t = time.time()
-            
+            yield(n, t, deltaT, slm, sl, total_volume)
+                
+    def print_loop(self, volumes, skip=10):
+        last_print_t = 0
+        accum = collections.deque()
+        for r in volumes:
+            n, t, deltaT, slm, sl, total_volume = r
+            accum.append(r)
+            if len(accum) > skip:
+                accum.popleft()
+                if  n % skip == 0:
+                    print_t = int(t)
+                    t_str = time.strftime("%H:%M:%S", time.localtime(t)) + ("  n={:<8d}".format(n))   if print_t != last_print_t else ""
+                    volume = sum(r[4] for r in accum)
+                    timet = sum(r[2] for r in accum)
+                    flow = volume / (timet / 60.0)
+                    yield u"{:>20}   {:>4.0f} slm   {}   {}   {:>5.0f} cc".format(
+                        t_str,
+                        flow,
+                        pos_slm(flow, 50),
+                        pos_l(total_volume, 50),
+                        total_volume*1000
+                        )
+                    last_print_t = print_t
+             
+
+def main():
+    with SFM3x00() as s:
+        f = FlowPrinter(s)
+        f.print_header()
+        for line in f.print_loop(f.volume_loop(s.readings())):
+            print(line)
+        
+        
+        
+    
+
+if __name__ == "__main__":
+    main()
         
         
         
         
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
         
         
