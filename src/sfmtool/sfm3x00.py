@@ -126,8 +126,8 @@ def pos_raw(vmin, vmax, width, val, refval=0.0, mark="#"):
     scaled0 = max(0, min(width-1, int((refval - vmin) * (width / (vmax - vmin))) ))
     pstr = [u" "] * width
     pstr[scaled0] = u"."
-    pstr[0] = u"\u2591"
-    pstr[width - 1] = u"\u2591"
+    #pstr[0] = u"\u2591"
+    #pstr[width - 1] = u"\u2591"
     pstr[scaled] = u"\u2588"
     return u"\x1b[37;44;1m" + u"".join(pstr) + u"\x1b[0m"
 
