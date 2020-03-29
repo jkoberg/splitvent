@@ -168,7 +168,7 @@ def totalize_readings(timedReadings, nf=1500, sr=100):
     V = 0.0
     n = int(nf)
     for r in timedReadings:
-        dV = (r.dt * r.slm) / 60.0
+        dV = (r.dt * r.slm * 1000.0) / 60.0
         V = V + dV
         yield TotalizedReading(r.slm, r.n, r.t, r.dt, dV, V)
 
@@ -196,12 +196,12 @@ def pos_slm(val, width=40):
     return pos_raw(FLOW_SLM_MIN, FLOW_SLM_MAX, width, val)
 
 
-VOL_L_MIN = -1.0
-VOL_L_MAX = 5.0
+VOL_ML_MIN = -1000.0
+VOL_ML_MAX = 5000.0
 
-def pos_l(val, width=40):
+def pos_ml(val, width=40):
     "format volume gauge string"
-    return pos_raw(VOL_L_MIN, VOL_L_MAX, width, val)
+    return pos_raw(VOL_ML_MIN, VOL_ML_MAX, width, val)
 
 
 
@@ -225,13 +225,21 @@ def format_totalized(totalizedReadings, sr=100.0, display_duration=12.0, skip=No
         statsaccum.append(r.V)
         if len(accum) == skip:
             if  r.n % skip == 0:
-                tidal_str = "VT ----- ml"
+                tidal_str = "VTi:----ml, VTe:----ml, RR:--.-b/min, MVe:---.-l/m"
                 if len(statsaccum) > 18:
                     signal = np.array(statsaccum)
                     resp_extrema = biopeaks.resp.resp_extrema(signal, sr)
+                    sigs = signal[resp_extrema]
                     if len(resp_extrema) > 4:
+                        if sigs[-1] < sigs[-2]:
+                            VTi = sigs[-2] - sigs[-3]
+                            VTe = sigs[-2] - sigs[-1]
+                        else:
+                            VTe = sigs[-3] - sigs[-2]
+                            VTi = sigs[-1] - sigs[-2]
                         period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, sr)
-                        tidal_str = "VT {:>5.0f} ml".format(tidalAmp[-1]*1000)
+                        mve = (rate[-1] * VTe)/1000.0
+                        tidal_str = "VTi:{:>4.0f}ml, VTe:{:>4.0f}ml, RR:{:4.1f}b/min, MVe:{:5.1f}l/m".format(VTi, VTe, rate[-1], mve)
                 print_t = int(r.t)
                 if(print_t != last_print_t):
                     t_str = "{}  n={:<8d}".format(time.strftime("%H:%M:%S", time.localtime(r.t)), r.n)
@@ -239,15 +247,15 @@ def format_totalized(totalizedReadings, sr=100.0, display_duration=12.0, skip=No
                     t_str = ""
                 volume = sum(r.dV for r in accum)
                 timet = sum(r.dt for r in accum)
-                flow = 0 if timet == 0 else volume / (timet / 60.0)
-                templatewidth = 60
+                flow = 0 if timet == 0 else (volume / (timet / 60.0)) / 1000
+                templatewidth = 48 + len(tidal_str) +1
                 colwidth = int((screenwidth - templatewidth) / 2)
                 yield u"{:>20}   {:>4.0f} slm   {}   {}   {:>5.0f} ml {:11}".format(
                     t_str,
                     flow,
                     pos_slm(flow, colwidth),
-                    pos_l(r.V, colwidth),
-                    r.V * 1000,
+                    pos_ml(r.V, colwidth),
+                    r.V,
                     tidal_str
                     )
                 last_print_t = print_t
