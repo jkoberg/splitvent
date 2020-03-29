@@ -215,6 +215,7 @@ def print_header(s):
 def format_totalized(totalizedReadings, sr=100.0, display_duration=12.0, skip=None):
     last_print_t = 0
     last_n = 0
+    v_error = 0.0
     screenwidth, screenheight = get_terminal_size()
     if skip is None:
         skip = int((display_duration * sr) / screenheight)
@@ -227,23 +228,27 @@ def format_totalized(totalizedReadings, sr=100.0, display_duration=12.0, skip=No
         statsaccum.append(r.V)
         if len(accum) == skip:
             if  r.n % skip == 0:
-                tidal_str = "VTi:----ml, VTe:----ml, RR:--.-b/min, MVe:---.-l/m"
-                if len(statsaccum) > 18:
-                    signal = np.array(statsaccum)
-                    resp_extrema = biopeaks.resp.resp_extrema(signal, sr)
-                    sigs = signal[resp_extrema]
-                    if len(resp_extrema) > 4:
-                        if sigs[-1] < sigs[-2]:
-                            VTi = sigs[-2] - sigs[-3]
-                            VTe = sigs[-2] - sigs[-1]
-                        else:
-                            VTe = sigs[-3] - sigs[-2]
-                            VTi = sigs[-1] - sigs[-2]
-                        veaccum.append(VTe)
-                        period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, sr)
-                        avgVTe = sum(veaccum)/len(veaccum)
-                        mve = (rate[-1] * avgVTe)/1000.0
-                        tidal_str = "VTi:{:>4.0f}ml, VTe:{:>4.0f}ml, RR:{:4.1f}b/min, MVe:{:5.1f}l/m".format(VTi, VTe, rate[-1], mve)
+                v_error = v_error - (0.1 * (v_error-min(statsaccum)))
+                tidal_str = "VTi:     ml, VTe:     ml, RR:     b/min, MVe:      l/m"
+                try:
+                    if len(statsaccum) > 18:
+                        signal = np.array(statsaccum)
+                        resp_extrema = biopeaks.resp.resp_extrema(signal, sr)
+                        sigs = signal[resp_extrema]
+                        if len(resp_extrema) > 4:
+                            if sigs[-1] < sigs[-2]:
+                                VTi = sigs[-2] - sigs[-3]
+                                VTe = sigs[-2] - sigs[-1]
+                            else:
+                                VTe = sigs[-3] - sigs[-2]
+                                VTi = sigs[-1] - sigs[-2]
+                            veaccum.append(VTe)
+                            period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, sr)
+                            avgVTe = sum(veaccum)/len(veaccum)
+                            mve = (rate[-1] * avgVTe)/1000.0
+                            tidal_str = "VTi:{:>4.0f} ml, VTe:{:>4.0f} ml, RR:{:4.1f} b/min, MVe:{:5.1f} l/m".format(VTi, VTe, rate[-1], mve)
+                except:
+                    pass
                 print_t = int(r.t)
                 if(print_t != last_print_t):
                     t_str = "{}  n={:<8d}".format(time.strftime("%H:%M:%S", time.localtime(r.t)), r.n-last_n)
@@ -260,8 +265,8 @@ def format_totalized(totalizedReadings, sr=100.0, display_duration=12.0, skip=No
                     t_str,
                     flow,
                     pos_slm(flow, colwidth),
-                    pos_ml(r.V, colwidth),
-                    r.V,
+                    pos_ml(r.V-v_error, colwidth),
+                    r.V-v_error,
                     tidal_str
                     )
                 last_print_t = print_t
