@@ -1,5 +1,5 @@
 
 ./src/turnon.sh
-python2 src/sfmtool/sfm3x00.py
+python3 src/sfmtool/sfm3x00.py
 
 
