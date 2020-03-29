@@ -7,7 +7,7 @@ Contributors to this project submit their work under a Creative Commons ShareAli
 
 # News
 
-* 2020-03-29 7:30PM EST - [Raspberry pi image now available for download at https://splitvent.s3.us-east-2.amazonaws.com/splitvent_rpi_image_20200329.zip](https://splitvent.s3.us-east-2.amazonaws.com/splitvent_rpi_image_20200329.zip)
+* 2020-03-29 7:30PM EST - [Raspberry pi image now available for download](https://splitvent.s3.us-east-2.amazonaws.com/splitvent_rpi_image_20200329.zip)
 
 
 # Quick Start
