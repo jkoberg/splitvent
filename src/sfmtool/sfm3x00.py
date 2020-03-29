@@ -214,12 +214,14 @@ def print_header(s):
 
 def format_totalized(totalizedReadings, sr=100.0, display_duration=12.0, skip=None):
     last_print_t = 0
+    last_n = 0
     screenwidth, screenheight = get_terminal_size()
     if skip is None:
         skip = int((display_duration * sr) / screenheight)
     print("Formatter, sr={}, dur={}, skip={}".format(sr, display_duration, skip))
     accum = collections.deque(maxlen=skip)
     statsaccum = collections.deque(maxlen=int(sr*display_duration*2))
+    veaccum = collections.deque(maxlen=3)
     for r in totalizedReadings:
         accum.append(r)
         statsaccum.append(r.V)
@@ -237,12 +239,16 @@ def format_totalized(totalizedReadings, sr=100.0, display_duration=12.0, skip=No
                         else:
                             VTe = sigs[-3] - sigs[-2]
                             VTi = sigs[-1] - sigs[-2]
+                        veaccum.append(VTe)
                         period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, sr)
-                        mve = (rate[-1] * VTe)/1000.0
+                        avgVTe = sum(veaccum)/len(veaccum)
+                        mve = (rate[-1] * avgVTe)/1000.0
                         tidal_str = "VTi:{:>4.0f}ml, VTe:{:>4.0f}ml, RR:{:4.1f}b/min, MVe:{:5.1f}l/m".format(VTi, VTe, rate[-1], mve)
                 print_t = int(r.t)
                 if(print_t != last_print_t):
-                    t_str = "{}  n={:<8d}".format(time.strftime("%H:%M:%S", time.localtime(r.t)), r.n)
+                    t_str = "{}  n={:<8d}".format(time.strftime("%H:%M:%S", time.localtime(r.t)), r.n-last_n)
+
+                    last_n = r.n
                 else:
                     t_str = ""
                 volume = sum(r.dV for r in accum)
