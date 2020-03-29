@@ -1,6 +1,6 @@
 
 from fcntl import ioctl
-import struct, time, collections
+import struct, time, collections, shutil
 
 
 """Pure-python interface for SFM3X00 mass flow sensors"""
@@ -122,13 +122,14 @@ FLOW_SLM_MAX = 75.0
 
 def pos_raw(vmin, vmax, width, val, refval=0.0, mark="#"):
     "Yield a string that represents a gauge, with a marker at a positions corresponding to val"
-    clamped = max(min(val, vmax), vmin)
-    scaled = int((clamped - vmin) * (width / (vmax - vmin)))
-    scaled0 = int((refval - vmin) * (width / (vmax - vmin))) 
+    scaled = max(0,min(width-1, int((val - vmin) * (width / (vmax - vmin))) ))
+    scaled0 = max(0, min(width-1, int((refval - vmin) * (width / (vmax - vmin))) ))
     pstr = [u" "] * width
     pstr[scaled0] = u"."
+    pstr[0] = u"\u2591"
+    pstr[width - 1] = u"\u2591"
     pstr[scaled] = u"\u2588"
-    return u"".join(pstr)
+    return u"\x1b[37;44;1m" + u"".join(pstr) + u"\x1b[0m"
 
 def pos_slm(val, width=40):
     "format slm gauge string"
@@ -159,8 +160,12 @@ class FlowPrinter(object):
             total_volume = total_volume + sl
             yield(n, t, deltaT, slm, sl, total_volume)
                 
-    def print_loop(self, volumes, skip=10):
+    def print_loop(self, volumes, skip=None):
         last_print_t = 0
+        termsize = shutil.get_terminal_size()
+        screenwidth, screenheight = termsize
+        if skip is None:
+            skip = int((12 / 0.010) / screenheight  )
         accum = collections.deque()
         for r in volumes:
             n, t, deltaT, slm, sl, total_volume = r
@@ -173,11 +178,13 @@ class FlowPrinter(object):
                     volume = sum(r[4] for r in accum)
                     timet = sum(r[2] for r in accum)
                     flow = volume / (timet / 60.0)
-                    yield u"{:>20}   {:>4.0f} slm   {}   {}   {:>5.0f} cc".format(
+                    templatewidth = 48
+                    colwidth = int((screenwidth - templatewidth) / 2)
+                    yield u"{:>20}   {:>4.0f} slm   {}   {}   {:>5.0f} ml".format(
                         t_str,
                         flow,
-                        pos_slm(flow, 50),
-                        pos_l(total_volume, 50),
+                        pos_slm(flow, colwidth),
+                        pos_l(total_volume, colwidth),
                         total_volume*1000
                         )
                     last_print_t = print_t
