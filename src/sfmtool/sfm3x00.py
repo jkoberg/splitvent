@@ -2,6 +2,10 @@
 from fcntl import ioctl
 import math, struct, time, collections, argparse
 
+import numpy as np
+import biopeaks.resp
+
+
 
 try:
     from shutil import get_terminal_size
@@ -142,9 +146,11 @@ class FakeSensor(object):
             n = (n + 1) % 800
 
 
-def sample_clock(valueGenerator, dwell=0.010, clock=time.time):
+def sample_clock(valueGenerator, sr=100.0, clock=time.time, sleep=time.sleep):
+    print("Clock, sr={}".format(sr))
+    dwell = 1.0/sr
     last_t = clock()
-    time.sleep(dwell)
+    sleep(dwell)
     t0 = clock()
     n = 0
     for slm in valueGenerator:
@@ -154,17 +160,17 @@ def sample_clock(valueGenerator, dwell=0.010, clock=time.time):
         n = n + 1
         t_sleep = max(0, ((n * dwell) + t0) - t)
         last_t = t
-        time.sleep(t_sleep)
+        sleep(t_sleep)
 
 
-def totalize_readings(timedReadings):
+def totalize_readings(timedReadings, nf=1500, sr=100):
+    print("Totalize, n={} sr={}".format(nf, sr))
     V = 0.0
+    n = int(nf)
     for r in timedReadings:
-        dV = (r.dt * r.slm) / 60.0
+        dV = (r.dt * r.slm * 1000.0) / 60.0
         V = V + dV
         yield TotalizedReading(r.slm, r.n, r.t, r.dt, dV, V)
-
-
 
 
 ANSI_WHITE_ON_BLUE = u"\x1b[37;44;1m"
@@ -190,12 +196,12 @@ def pos_slm(val, width=40):
     return pos_raw(FLOW_SLM_MIN, FLOW_SLM_MAX, width, val)
 
 
-VOL_L_MIN = -1.0
-VOL_L_MAX = 5.0
+VOL_ML_MIN = -1000.0
+VOL_ML_MAX = 5000.0
 
-def pos_l(val, width=40):
+def pos_ml(val, width=40):
     "format volume gauge string"
-    return pos_raw(VOL_L_MIN, VOL_L_MAX, width, val)
+    return pos_raw(VOL_ML_MIN, VOL_ML_MAX, width, val)
 
 
 
@@ -205,34 +211,63 @@ def print_header(s):
     print("Value scale: {}".format(s.scale))
     print("Starting flow measurements")
 
-        
 
-def format_totalized(totalizedReadings, dwell=0.10, display_duration=12.0, skip=None):
+def format_totalized(totalizedReadings, sr=100.0, display_duration=12.0, skip=None):
     last_print_t = 0
+    last_n = 0
+    v_error = 0.0
     screenwidth, screenheight = get_terminal_size()
     if skip is None:
-        skip = int((display_duration / dwell) / screenheight)
-    accum = collections.deque()
+        skip = int((display_duration * sr) / screenheight)
+    print("Formatter, sr={}, dur={}, skip={}".format(sr, display_duration, skip))
+    accum = collections.deque(maxlen=skip)
+    statsaccum = collections.deque(maxlen=int(sr*display_duration*2))
+    veaccum = collections.deque(maxlen=3)
     for r in totalizedReadings:
         accum.append(r)
-        if len(accum) > skip:
-            accum.popleft()
+        statsaccum.append(r.V)
+        if len(accum) == skip:
             if  r.n % skip == 0:
+                v_error = v_error - (0.1 * (v_error-min(statsaccum)))
+                tidal_str = "VTi:     ml, VTe:     ml, RR:     b/min, MVe:      l/m"
+                try:
+                    if len(statsaccum) > 18:
+                        signal = np.array(statsaccum)
+                        resp_extrema = biopeaks.resp.resp_extrema(signal, sr)
+                        sigs = signal[resp_extrema]
+                        if len(resp_extrema) > 4:
+                            if sigs[-1] < sigs[-2]:
+                                VTi = sigs[-2] - sigs[-3]
+                                VTe = sigs[-2] - sigs[-1]
+                            else:
+                                VTe = sigs[-3] - sigs[-2]
+                                VTi = sigs[-1] - sigs[-2]
+                            veaccum.append(VTe)
+                            period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, sr)
+                            avgVTe = sum(veaccum)/len(veaccum)
+                            mve = (rate[-1] * avgVTe)/1000.0
+                            tidal_str = "VTi:{:>4.0f} ml, VTe:{:>4.0f} ml, RR:{:4.1f} b/min, MVe:{:5.1f} l/m".format(VTi, VTe, rate[-1], mve)
+                except:
+                    pass
                 print_t = int(r.t)
-                t_str = ("{}  n={:<8d}".format(time.strftime("%H:%M:%S", time.localtime(r.t)), r.n)
-                         if print_t != last_print_t
-                         else "" )
+                if(print_t != last_print_t):
+                    t_str = "{}  n={:<8d}".format(time.strftime("%H:%M:%S", time.localtime(r.t)), r.n-last_n)
+
+                    last_n = r.n
+                else:
+                    t_str = ""
                 volume = sum(r.dV for r in accum)
                 timet = sum(r.dt for r in accum)
-                flow = 0 if timet == 0 else volume / (timet / 60.0)
-                templatewidth = 48
+                flow = 0 if timet == 0 else (volume / (timet / 60.0)) / 1000
+                templatewidth = 48 + len(tidal_str) +1
                 colwidth = int((screenwidth - templatewidth) / 2)
-                yield u"{:>20}   {:>4.0f} slm   {}   {}   {:>5.0f} ml".format(
+                yield u"{:>20}   {:>4.0f} slm   {}   {}   {:>5.0f} ml {:11}".format(
                     t_str,
                     flow,
                     pos_slm(flow, colwidth),
-                    pos_l(r.V, colwidth),
-                    r.V * 1000
+                    pos_ml(r.V-v_error, colwidth),
+                    r.V-v_error,
+                    tidal_str
                     )
                 last_print_t = print_t
              
@@ -252,14 +287,13 @@ def main():
 
     args = parser.parse_args()
 
-    dwell = 1.0/args.sample_rate
 
     with args.sensor_class() as s:
         print_header(s)
         readings = s.readings()
-        timed = sample_clock(readings, dwell)
-        totalized = totalize_readings(timed)
-        formatted = format_totalized(totalized, dwell, args.display_duration)
+        timed = sample_clock(readings, args.sample_rate)
+        totalized = totalize_readings(timed, 2*args.sample_rate*args.display_duration, args.sample_rate)
+        formatted = format_totalized(totalized, args.sample_rate, args.display_duration)
         for line in formatted:
             print(line)
         
