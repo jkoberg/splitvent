@@ -4,6 +4,12 @@
 
 Contributors to this project submit their work under a Creative Commons ShareAlike 4.0 license. See `LICENSE.md` for more details
 
+
+# News
+
+* 2020-03-29 7:30PM EST - [Raspberry pi image now available for download](https://splitvent.s3.amazonaws.com/splitvent_rpi_image_20200329.zip)
+
+
 # Quick Start
 
 * Connect to the Sensirion sensor as shown in the image below:
@@ -14,3 +20,10 @@ Contributors to this project submit their work under a Creative Commons ShareAli
 * Make sure the i2c-dev module is shown by `lsmod`, or run `sudo raspi-config` and turn on the I2C peripheral to load it.
 
 * `./run.sh` 
+
+
+# Thanks to the following contributors:
+
+  * Tobin Greensweig
+  * Joe Koberg
+  
