@@ -30,6 +30,7 @@ class GraphRenderer(object):
         self.minyrange = minyrange
 
     def render_bg(self, surf):
+        return
         if self.yrange is not None:
             ymintxt = self.rangefont.render(" {:<12.2f}".format(self.yrange[0]), True, self.bordercolor, black)
             surf.blit(ymintxt, ymintxt.get_rect(topleft=self.rect.bottomleft))
@@ -58,6 +59,11 @@ class GraphRenderer(object):
         pts = list(self.scale_values(values))
         prefix = pts[:idx+1]
         suffix = pts[idx+1:]
+
+        ymintxt = self.rangefont.render(" {:<12.2f}".format(self.yrange[0]), True, self.bordercolor, black)
+        surf.blit(ymintxt, ymintxt.get_rect(topleft=self.rect.bottomleft))
+        ymaxtxt = self.rangefont.render(" {:<12.2f}".format(self.yrange[1]), True, self.bordercolor, black)
+        surf.blit(ymaxtxt, ymaxtxt.get_rect(bottomleft=self.rect.topleft))
         for refline in self.reflines:
             y = self.scale_y(refline)
             pygame.draw.line(surf, self.bordercolor, (0, y), (self.width, y), self.borderwidth)
