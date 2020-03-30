@@ -48,6 +48,9 @@ All models have been printed using FDM printers with PLA, but PETG may be used. 
   * Tobin Greensweig
   * Nate Surls
   * Paul Holland
+  * Timothy Nisi
+  * Paul Yearling
+  * Brian Overshiner
   * Joe Koberg
   * [Dan Lash](https://www.linkedin.com/in/danlash)
   
