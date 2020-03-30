@@ -1,5 +1,5 @@
 
-import time, math, argparse
+import time, math, argparse, json
 from collections import deque, namedtuple
 import pygame
 from pygame.locals import *
@@ -131,6 +131,9 @@ def parseArgs():
     parser.add_argument("--duration", dest='display_duration', type=float, default=15.0,
                         help='number of seconds of readings to display')
 
+    parser.add_argument("--log", dest='log_data', action='store_const', const=True, default=False,
+                        help='Write data to logfile')
+
     return parser.parse_args()
 
 
@@ -187,8 +190,14 @@ def main():
 
     currentbg = bg
 
-    lastTidal = None
     with args.sensor_class() as s:
+        if args.log_data:
+            datestr = time.strftime("%Y%m%d_%H%M%S", time.localtime(time.time()))
+            filename = "splitvent-sn{}-{}hz-{}.log".format(str(s.serial_number), int(args.sample_rate), datestr)
+            logfile = open(filename, "w")
+            print("logging to " + filename)
+        else:
+            logfile = None
         print_header(s)
         readings = s.readings()
         timed = sample_clock(readings, args.sample_rate)
@@ -197,10 +206,15 @@ def main():
         last_tidal_time = 0.0
         last_tidal = None
         n = 0
+        t0 = None
         print("Formatter, sr={}, datalen={}".format(args.sample_rate, datalen))
         statsaccum = deque(maxlen=datalen*2)
         veaccum = deque(maxlen=3)
         for r in integrated:
+            if t0 is None:
+                t0 = r.t
+            if logfile is not None:
+                logfile.write('{{"t":{:.6f}, "slm":{:.2f}}}\n'.format(r.t-t0, r.slm))
             statsaccum.append(r.V)
             tidal = None
             try:
