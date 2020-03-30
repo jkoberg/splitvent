@@ -165,15 +165,13 @@ def sample_clock(valueGenerator, sr=100.0, clock=time.time, sleep=time.sleep):
 
 def integrate_readings(timedReadings, sr):
     V = 0.0
-    armed = False
-    breathBuffer = collections.deque(maxlen=int(sr/2))
+    idled_until = 0.0
+    last_reading = 0.0
     for r in timedReadings:
-        breathBuffer.append(r.slm)
-        if(armed and breathBuffer[-1] > 0.01 and breathBuffer[0] < -0.01):
+        if last_reading < 0 and r.slm >= 0 and r.t > idled_until:
             V = 0.0
-            armed = False
-        if((not armed) and breathBuffer[-1] < -0.01 and breathBuffer[0] > 0.01):
-            armed = True
+            idled_until = r.t + 0.25
+        last_reading = r.slm
         dV = (r.dt * r.slm * 1000.0) / 60.0
         V = V + dV
         yield TotalizedReading(r.slm, r.n, r.t, r.dt, dV, V)
