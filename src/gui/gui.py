@@ -89,6 +89,8 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
               running = false
+            elif event.type == pygame.KEYDOWN and event.key in [pygame.K_ESCAPE, pygame.K_Q]:
+              running = false
         screen.blit(bg, (0,0))
         x = (n % 120) / 120.0
         datavalue = math.sin(2 * math.pi * x)
