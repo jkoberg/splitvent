@@ -1,6 +1,10 @@
 
 
-# splitvent - Designs and Tools to help multiply available Ventilators
+# *splitvent* - Designs and Tools to help multiply available Ventilators
+
+This project includes designs for 3D-printed ventilator "Y" splitters, 3D printed flow restrictors, and Raspberry Pi software to monitor per-patient respiratory flow with a [Sensirion SFM-3x00 series inline flow sensor](https://www.sensirion.com/en/flow-sensors/mass-flow-meters-for-high-precise-measurement-of-gases/low-pressure-drop-mass-flow-meter/)
+
+We are releasing our work early and often, and in a form that we hope interested individuals can reproduce. 
 
 Contributors to this project submit their work under a Creative Commons ShareAlike 4.0 license. See `LICENSE.md` for more details
 
@@ -12,9 +16,15 @@ Contributors to this project submit their work under a Creative Commons ShareAli
 
 # Quick Start
 
+## Ventilator Y
 
+* *Instructions coming soon*
 
-* Connect to the Sensirion sensor as shown in the image below:
+## Monitoring Software
+
+* Fabricate a cable to connect to the sensor's connector surface contact lands. 
+
+* Connect your RPi to the Sensirion sensor as shown in the image below:
        ![splitvent schematic of RPi connected to Sensirion sensor](./engineering/Schematic.jpg)
 
 * Download the [RPi disk image](https://splitvent.s3.us-east-2.amazonaws.com/splitvent_rpi_image_20200329.zip), unzip, and write to an 8GB or greater SD card. Follow the [instructions here](https://www.raspberrypi.org/documentation/installation/installing-images/README.md)
