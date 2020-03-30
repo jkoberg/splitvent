@@ -134,6 +134,9 @@ def parseArgs():
     parser.add_argument("--log", dest='log_data', action='store_const', const=True, default=False,
                         help='Write data to logfile')
 
+    parser.add_argument("--quiet", dest='quiet', action='store_const', const=True, default=False,
+                        help="Don't update display")
+
     return parser.parse_args()
 
 
@@ -189,6 +192,8 @@ def main():
     mvetext.render_bg(bg)
 
     currentbg = bg
+    screen.blit(currentbg, (0,0))
+    pygame.display.update()
 
     with args.sensor_class() as s:
         if args.log_data:
@@ -278,7 +283,8 @@ def main():
                 vtitext.render(currentbg, "{:5.0f}".format(tidal.VTi))
                 mvetext.render(currentbg, "{:5.1f}".format(tidal.MVe))
 
-            pygame.display.update()
+            if not args.quiet:
+                pygame.display.update()
             n = n + 1
         print("Exiting normally.")
         pygame.quit()
