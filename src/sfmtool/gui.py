@@ -196,9 +196,9 @@ def main():
             statsaccum.append(r.V)
             tidal_data = None
             try:
-                if(r.n % sr == 0):
+                if(r.n % args.sample_rate == 0):
                     signal = np.array(statsaccum)
-                    resp_extrema = biopeaks.resp.resp_extrema(signal, sr)
+                    resp_extrema = biopeaks.resp.resp_extrema(signal, args.sample_rate)
                     sigs = signal[resp_extrema]
                     if len(resp_extrema) > 4:
                         if sigs[-1] < sigs[-2]:
@@ -208,7 +208,7 @@ def main():
                             VTe = sigs[-3] - sigs[-2]
                             VTi = sigs[-1] - sigs[-2]
                         veaccum.append(VTe)
-                        period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, sr)
+                        period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, args.sample_rate)
                         avgVTe = sum(veaccum)/len(veaccum)
                         mve = (rate[-1] * avgVTe)/1000.0
                         tidal_data = TidalData(VTi, VTe, rate[-1], mve)
