@@ -244,7 +244,7 @@ def main():
                 rrText.render(currentbg, "{:5.1f}".format(tidal.RR))
                 vteText.render(currentbg,"{:5.0f}".format(tidal.VTe))
                 vtitext.render(currentbg, "{:5.0f}".format(tidal.VTi))
-                mvetext.render(currentbg, "{:5.0f}".format(tidal.MVe))
+                mvetext.render(currentbg, "{:5.1f}".format(tidal.MVe))
 
             pygame.display.update()
             n = n + 1
