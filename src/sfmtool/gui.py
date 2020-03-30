@@ -6,6 +6,8 @@ from pygame.locals import *
 import numpy as np
 import biopeaks.resp
 
+from scipy.signal import detrend
+
 from sfm3x00 import *
 
 cyan = (127,255,223)
@@ -188,6 +190,7 @@ def main():
         totalized = totalize_readings(timed)
         running = True
         n = 0
+        v_error = 0.0
         print("Formatter, sr={}, datalen={}".format(args.sample_rate, datalen))
         statsaccum = deque(maxlen=datalen*2)
         veaccum = deque(maxlen=3)
@@ -203,6 +206,7 @@ def main():
                         if sigs[-1] < sigs[-2]:
                             VTi = sigs[-2] - sigs[-3]
                             VTe = sigs[-2] - sigs[-1]
+                            v_error = sigs[-1]
                         else:
                             VTe = sigs[-3] - sigs[-2]
                             VTi = sigs[-1] - sigs[-2]
@@ -214,7 +218,7 @@ def main():
             except:
                 pass
 
-            slm, V, tidal =  r.slm, r.V, tidal_data
+            slm, V, tidal =  r.slm, r.V - v_error, tidal_data
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
