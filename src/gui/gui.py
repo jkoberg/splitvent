@@ -7,24 +7,28 @@ from pygame.locals import *
 
 cyan = (127,255,223)
 yellow = (255, 255, 127)
-
+green = (64,255,64)
+border = (95,63,63)
+black = (0,0,0)
 
 
 class GraphRenderer(object):
-    def __init__(self, screen, rect, color, width=3, reflines=[]):
+    def __init__(self, screen, rect, color, width=3, reflines=[], bordercolor=border, borderwidth=3):
         self.screen = screen
         self.x0, self.y0, self.width, self.height = rect
         self.rect = rect
         self.color = color
         self.linewidth = width
         self.reflines = reflines
+        self.bordercolor = bordercolor
+        self.borderwidth = borderwidth
+        self.rangefont = pygame.font.SysFont("menlottc", int(self.height * 0.1))
 
     def render_bg(self, bgsurf):
         pass
+        #pygame.draw.rect(bgsurf, self.bordercolor, self.rect, self.borderwidth)
 
-    def scale_values(self, values, yrange=None):
-        if yrange is None:
-            yrange = (min(values), max(values))
+    def scale_values(self, values, yrange):
         ymin, ymax = yrange
         numvals = float(len(values))
         yscale = ymax - ymin if ymin != ymax else 1.0
@@ -34,9 +38,16 @@ class GraphRenderer(object):
             yield (x, y)
 
     def render(self, idx, values, yrange=None):
+        if yrange is None:
+            yrange = (min(values), max(values))
         pts = list(self.scale_values(values, yrange))
         prefix = pts[:idx+1]
         suffix = pts[idx+1:]
+        ymintxt = self.rangefont.render("   " + str(yrange[0]), True, self.bordercolor, black)
+        self.screen.blit(ymintxt, ymintxt.get_rect(topleft=self.rect.bottomleft))
+        ymaxtxt = self.rangefont.render("   " + str(yrange[1]), True, self.bordercolor, black)
+        self.screen.blit(ymaxtxt, ymaxtxt.get_rect(bottomleft=self.rect.topleft))
+
         if len(prefix) > 2:
             pygame.draw.lines(self.screen, self.color, False, prefix, self.linewidth)
         if len(suffix) > 2:
@@ -44,7 +55,7 @@ class GraphRenderer(object):
 
 
 class TextRectRenderer(object):
-    def __init__(self, screen, rect,  header, unit, fontcolor=(255,255,255), bordercolor=(95,63,63), borderwidth=3, bgcolor=(0,0,0)):
+    def __init__(self, screen, rect,  header, unit, fontcolor=(255,255,255), bordercolor=border, borderwidth=3, bgcolor=(0,0,0)):
         self.screen = screen
         self.rect = rect
         self.header = header
@@ -65,9 +76,10 @@ class TextRectRenderer(object):
         self.headertxt = self.smallfont.render(header, True, fontcolor, bgcolor)
         self.unittxt = self.smallfont.render(unit, True, fontcolor, bgcolor)
         self.C1 = (int(self.width / 2.0), int(self.height/8.0))
+        self.L1 = (int(self.width * 0.05), int(self.height/8.0))
         self.AC2 = (rect.left + int(self.width / 2.0), rect.top + int(self.height/2.0))
         self.C3 = (int(self.width / 2.0), int(6.0*self.height/8.0))
-        self.headerrect = self.headertxt.get_rect(center=self.C1)
+        self.headerrect = self.headertxt.get_rect(midleft=self.L1)
         self.unitrect = self.unittxt.get_rect(center=self.C3)
 
     def render_bg(self, bgsurf):
@@ -76,7 +88,7 @@ class TextRectRenderer(object):
         self.surf.blit(self.unittxt, self.unitrect)
         pygame.draw.rect(self.surf, self.bordercolor, self.relrect, self.borderwidth)
         #pygame.draw.line(self.surf, self.bordercolor, (0, self.hA), (self.width, self.hA), self.borderwidth)
-        pygame.draw.line(self.surf, self.bordercolor, (0, self.hB), (self.width, self.hB), self.borderwidth)
+        #pygame.draw.line(self.surf, self.bordercolor, (0, self.hB), (self.width, self.hB), self.borderwidth)
         bgsurf.blit(self.surf, self.rect.topleft)
 
     def render(self, value):
@@ -85,36 +97,58 @@ class TextRectRenderer(object):
 
 def main():
     print("splitvent monitoring by Joe Koberg et al, http://github.com/jkoberg/splitvent")
+
     reqsize = (1024, 600)
-    graphfrac = 0.80
+
     pygame.init()
-    pygame.font.init()
     pygame.display.set_caption("splitvent")
     screen = pygame.display.set_mode(reqsize)
     size = screen.get_rect().size
-    width,height = size
-    fontsize = int(height / 32)
-    linewidth = int(height / 200)
+    width, height = size
+
+    pygame.font.init()
     font = pygame.font.SysFont("menlottc", 30)
-    n = 0
-    running = True
-    times = deque(maxlen=10)
-    times.append(0.0)
+
+    linewidth = int(height / 200)
+
+    #fpstimes = deque(maxlen=10)
+    #fpstimes.append(0.0)
+
     datalen = 1233
-    datalen2 = 300
     datapoints = [0.0] * datalen
+
+    datalen2 = 300
     datapoints2 = [0.0] * datalen2
-    textMargin = width * 0.75
-    textWidth = width * 0.25
-    flowText = TextRectRenderer(screen, pygame.Rect(textMargin,0,textWidth,height/2), "VTe", "mL", fontcolor=cyan, borderwidth=linewidth)
-    volumeText = TextRectRenderer(screen, pygame.Rect(textMargin,height/2,textWidth,height/2), "RR", "b/min", fontcolor=yellow, borderwidth=linewidth)
+
+    wstep = int(width / 12.)
+
+    graphWidth = wstep * 9
+    textWidth = wstep * 3
+
+    hstep = int(height / 12.)
+
+    flowGraph =  GraphRenderer(screen,    pygame.Rect(0, hstep*1,           graphWidth, hstep*4), green, linewidth)
+    volGraph =   GraphRenderer(screen,    pygame.Rect(0, hstep*7,           graphWidth, hstep*4), cyan, linewidth)
+
+    flowText =   TextRectRenderer(screen, pygame.Rect(graphWidth, 0,        textWidth, hstep*4), "RR", "mL",     fontcolor=green, borderwidth=linewidth)
+    volumeText = TextRectRenderer(screen, pygame.Rect(graphWidth, hstep*4,  textWidth, hstep*4), "VTe", "b/min", fontcolor=cyan,  borderwidth=linewidth)
+    vtitext =    TextRectRenderer(screen, pygame.Rect(graphWidth, hstep*8,  textWidth, hstep*2), "VTi", "mL",    fontcolor=cyan,  borderwidth=linewidth)
+    mvetext =    TextRectRenderer(screen, pygame.Rect(graphWidth, hstep*10, textWidth, hstep*2), "MVe", "L/min", fontcolor=cyan,  borderwidth=linewidth)
+
     bg = pygame.Surface(size)
     bg.fill(pygame.Color('#000000'))
+
+    pygame.draw.line(bg, border, (0, hstep*6), (width, hstep*6), linewidth)
+
+    flowGraph.render_bg(bg)
+    volGraph.render_bg(bg)
     flowText.render_bg(bg)
     volumeText.render_bg(bg)
-    flowGraph = GraphRenderer(screen, pygame.Rect(0,30, textMargin,(height/2)-60), cyan, linewidth)
-    volGraph = GraphRenderer(screen, pygame.Rect(0,(height/2)+30, textMargin,(height/2)-60), yellow, linewidth)
+    vtitext.render_bg(bg)
+    mvetext.render_bg(bg)
 
+    n = 0
+    running = True
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -124,15 +158,15 @@ def main():
 
         screen.blit(bg, (0,0))
 
-        times.append(time.time())
-        fps = (len(times) - 1) / (times[-1] - times[0])
-        textsurf = font.render(
-            "{:4.0f} fps n={:10d}".format(fps, n),
-            True,
-            (255,255,255),
-            (0,0,0)
-        )
-        screen.blit(textsurf, (0,0))
+        #fpstimes.append(time.time())
+        #fps = (len(fpstimes) - 1) / (fpstimes[-1] - fpstimes[0])
+        #textsurf = font.render(
+        #    "{:4.0f} fps n={:10d}".format(fps, n),
+        #    True,
+        #    (255,255,255),
+        #    (0,0,0)
+        #)
+        #screen.blit(textsurf, (0,0))
 
         x = (n % 120) / 120.0
         datavalue = math.sin(2 * math.pi * x)
