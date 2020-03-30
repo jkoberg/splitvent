@@ -41,8 +41,7 @@ You'll see a UI like this:
 
 # 3D Printing Models
 
-All models have been printed using FDM printers with PLA, but PETG may be used
-Settings: Use 10-20% infill with supports touching buildplate
+All models have been printed using FDM printers with PLA, but PETG may be used. All tests printed using 10-20% infill with supports touching buildplate
 
 # Thanks to the following contributors:
 
