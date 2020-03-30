@@ -166,18 +166,18 @@ def sample_clock(valueGenerator, sr=100.0, clock=time.time, sleep=time.sleep):
 def integrate_readings(timedReadings, sr):
     V = 0.0
     idled_until = 0.0
+    peak_until = 0.0
     last_reading = 0.0
     V_peak = 0.0
     for r in timedReadings:
-        if last_reading < 0 and r.slm >= 0 and r.t > idled_until and V < V_peak*0.10:
+        if last_reading < 0 and r.slm >= 0 and r.t > idled_until and (r.t > peak_until or V < V_peak*0.10):
             V = 0.0
             V_peak = 0.0
+            peak_until = r.t + 2
             idled_until = r.t + 0.25
         last_reading = r.slm
         dV = (r.dt * r.slm * 1000.0) / 60.0
         V = V + dV
-        if(r.t > idled_until):
-            V_peak = V_peak * 0.95
         V_peak = max(V_peak, V)
         yield TotalizedReading(r.slm, r.n, r.t, r.dt, dV, V)
 
