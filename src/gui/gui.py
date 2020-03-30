@@ -26,9 +26,9 @@ class GraphRenderer(object):
 
     def render_bg(self, surf):
         if self.yrange is not None:
-            ymintxt = self.rangefont.render("   " + str(self.yrange[0]), True, self.bordercolor, black)
+            ymintxt = self.rangefont.render(" {:<12.2f}".format(self.yrange[0]), True, self.bordercolor, black)
             surf.blit(ymintxt, ymintxt.get_rect(topleft=self.rect.bottomleft))
-            ymaxtxt = self.rangefont.render("   " + str(self.yrange[1]), True, self.bordercolor, black)
+            ymaxtxt = self.rangefont.render(" {:<12.2f}".format(self.yrange[1]), True, self.bordercolor, black)
             surf.blit(ymaxtxt, ymaxtxt.get_rect(bottomleft=self.rect.topleft))
             #pygame.draw.rect(bgsurf, self.bordercolor, self.rect, self.borderwidth)
 
@@ -96,8 +96,12 @@ def main():
     print("splitvent monitoring by Joe Koberg et al, http://github.com/jkoberg/splitvent")
 
     reqsize = (1024, 600)
+    FPS = 30
 
     pygame.init()
+
+    fpsClock = pygame.time.Clock()
+
     pygame.display.set_caption("splitvent")
     screen = pygame.display.set_mode(reqsize)
     size = screen.get_rect().size
@@ -108,8 +112,8 @@ def main():
 
     linewidth = int(height / 200)
 
-    #fpstimes = deque(maxlen=10)
-    #fpstimes.append(0.0)
+    fpstimes = deque(maxlen=10)
+    fpstimes.append(0.0)
 
     datalen = 1233
     datapoints = [0.0] * datalen
@@ -157,17 +161,9 @@ def main():
 
         screen.blit(currentbg, (0,0))
 
-        #fpstimes.append(time.time())
-        #fps = (len(fpstimes) - 1) / (fpstimes[-1] - fpstimes[0])
-        #textsurf = font.render(
-        #    "{:4.0f} fps n={:10d}".format(fps, n),
-        #    True,
-        #    (255,255,255),
-        #    (0,0,0)
-        #)
-        #screen.blit(textsurf, (0,0))
+        fpstimes.append(time.time())
 
-        x = (n % 120) / 120.0
+        x = (n % 50) / 50.0
         datavalue = math.sin(2 * math.pi * x)
         idx = n % datalen
         datapoints[idx] = datavalue
@@ -181,8 +177,16 @@ def main():
         if len(datapoints2) > 2:
             volGraph.render(screen, idx2, datapoints2)
 
-        if (n % 60) == 1:
+        if (n % FPS) == 1:
             currentbg = bg.copy()
+            fps = (len(fpstimes) - 1) / (fpstimes[-1] - fpstimes[0])
+            textsurf = font.render(
+                "{:4.0f} fps n={:10d}".format(fps, n),
+                True,
+                (255,255,255),
+                (0,0,0)
+            )
+            currentbg.blit(textsurf, (0,0))
             flowGraph.render_bg(currentbg)
             volGraph.render_bg(currentbg)
             rrText.render(currentbg, "{:5.1f}".format(datavalue*10))
@@ -191,6 +195,7 @@ def main():
             mvetext.render(currentbg, "{:5.0f}".format(datavalue2*100))
 
         pygame.display.update()
+        fpsClock.tick(FPS)
         n = n + 1
     print("Exiting normally.")
     pygame.quit()
