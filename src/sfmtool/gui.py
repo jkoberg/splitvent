@@ -6,7 +6,6 @@ from pygame.locals import *
 import numpy as np
 import biopeaks.resp
 
-from scipy.signal import detrend
 
 from sfm3x00 import *
 
@@ -187,18 +186,17 @@ def main():
         print_header(s)
         readings = s.readings()
         timed = sample_clock(readings, args.sample_rate)
-        totalized = totalize_readings(timed)
+        totalized = totalize_readings(timed, args.sample_rate)
         running = True
         n = 0
-        v_error = 0.0
         print("Formatter, sr={}, datalen={}".format(args.sample_rate, datalen))
         statsaccum = deque(maxlen=datalen*2)
         veaccum = deque(maxlen=3)
         for r in totalized:
             statsaccum.append(r.V)
-            tidal_data = None
+            tidal = None
             try:
-                if(r.n % args.sample_rate == 0):
+                if(r.n % args.sample_rate == 0): # compute tidal data once per second
                     signal = np.array(statsaccum)
                     resp_extrema = biopeaks.resp.resp_extrema(signal, args.sample_rate)
                     sigs = signal[resp_extrema]
@@ -206,7 +204,6 @@ def main():
                         if sigs[-1] < sigs[-2]:
                             VTi = sigs[-2] - sigs[-3]
                             VTe = sigs[-2] - sigs[-1]
-                            v_error = sigs[-1]
                         else:
                             VTe = sigs[-3] - sigs[-2]
                             VTi = sigs[-1] - sigs[-2]
@@ -214,11 +211,9 @@ def main():
                         period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, args.sample_rate)
                         avgVTe = sum(veaccum)/len(veaccum)
                         mve = (rate[-1] * avgVTe)/1000.0
-                        tidal_data = TidalData(VTi, VTe, rate[-1], mve)
+                        tidal = TidalData(VTi, VTe, rate[-1], mve)
             except:
                 pass
-
-            slm, V, tidal =  r.slm, r.V - v_error, tidal_data
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -234,11 +229,11 @@ def main():
 
             idx = n % datalen
 
-            flowPoints[idx] = slm
+            flowPoints[idx] = r.slm
             if len(flowPoints) > 2:
                 flowGraph.render(screen, idx, flowPoints)
 
-            volPoints[idx] = V
+            volPoints[idx] = r.V
             if len(volPoints) > 2:
                 volGraph.render(screen, idx, volPoints)
 

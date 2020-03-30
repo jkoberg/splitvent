@@ -163,9 +163,17 @@ def sample_clock(valueGenerator, sr=100.0, clock=time.time, sleep=time.sleep):
         sleep(t_sleep)
 
 
-def totalize_readings(timedReadings):
+def totalize_readings(timedReadings, sr):
     V = 0.0
+    armed = False
+    breathBuffer = collections.deque(maxlen=int(sr/2))
     for r in timedReadings:
+        breathBuffer.append(r.slm)
+        if(armed and breathBuffer[-1] > 0.01 and breathBuffer[0] < -0.01):
+            V = 0.0
+            armed = False
+        if((not armed) and breathBuffer[-1] < -0.01 and breathBuffer[0] > 0.01):
+            armed = True
         dV = (r.dt * r.slm * 1000.0) / 60.0
         V = V + dV
         yield TotalizedReading(r.slm, r.n, r.t, r.dt, dV, V)
@@ -295,7 +303,7 @@ def main():
         print_header(s)
         readings = s.readings()
         timed = sample_clock(readings, args.sample_rate)
-        totalized = totalize_readings(timed)
+        totalized = totalize_readings(timed, args.sample_rate)
         formatted = format_totalized(totalized, args.sample_rate, args.display_duration)
         for line in formatted:
             print(line)
