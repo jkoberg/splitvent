@@ -188,6 +188,8 @@ def main():
         timed = sample_clock(readings, args.sample_rate)
         totalized = totalize_readings(timed, args.sample_rate)
         running = True
+        last_tidal_time = 0.0
+        last_tidal = None
         n = 0
         print("Formatter, sr={}, datalen={}".format(args.sample_rate, datalen))
         statsaccum = deque(maxlen=datalen*2)
@@ -237,7 +239,9 @@ def main():
             if len(volPoints) > 2:
                 volGraph.render(screen, idx, volPoints)
 
-            if tidal is not None:
+            if tidal is not None and tidal != last_tidal and (r.t - last_tidal_time > 0.5) :
+                last_tidal = tidal
+                last_tidal_time = r.t
                 currentbg = bg.copy()
                 fps = (len(fpstimes) - 1) / (fpstimes[-1] - fpstimes[0])
                 textsurf = font.render(
