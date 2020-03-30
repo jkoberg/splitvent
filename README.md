@@ -39,9 +39,17 @@ You'll see a UI like this:
 
 ![splitvent simple ui](docs/simpleui.jpg)
 
+# 3D Printing Models
+
+All models have been printed using FDM printers with PLA, but PETG may be used
+Settings: Use 10-20% infill with supports touching buildplate
+
 # Thanks to the following contributors:
 
   * Tobin Greensweig
+  * Nate Surls
+  * Paul Holland
   * Joe Koberg
-  * [Dan Lash](https://www.linkedin.com/in/danlash) 
+  * [Dan Lash](https://www.linkedin.com/in/danlash)
+  
   
