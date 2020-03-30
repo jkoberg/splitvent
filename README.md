@@ -16,9 +16,13 @@ Contributors to this project submit their work under a Creative Commons ShareAli
 
 # Quick Start
 
-## Ventilator Y
+## 3D Printing Models
 
-* *Instructions coming soon*
+* Models have been printed with FDM printers using PLA or PETG.
+* TPU can be used for an o-ring.
+* Other materials such as Med610, Dental SG/LT, and Teeth A2 can be used and should be considered for sterilization purposes. 
+
+* Models printed with FDM should use 10-20% infill with supports touching buildplate.
 
 ## Monitoring Software
 
@@ -38,10 +42,6 @@ Contributors to this project submit their work under a Creative Commons ShareAli
 You'll see a UI like this:
 
 ![splitvent simple ui](docs/simpleui.jpg)
-
-# 3D Printing Models
-
-All models have been printed using FDM printers with PLA, but PETG may be used. All tests printed using 10-20% infill with supports touching buildplate
 
 # Thanks to the following contributors:
 
