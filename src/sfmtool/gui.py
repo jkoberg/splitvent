@@ -165,8 +165,8 @@ def main():
 
     hstep = int(height / 12.)
 
-    flowGraph =  GraphRenderer((-10, 10), pygame.Rect(0, hstep*1,           graphWidth, hstep*4), green, linewidth)
-    volGraph =   GraphRenderer((0, 100), pygame.Rect(0, hstep*7,           graphWidth, hstep*4), cyan, linewidth)
+    flowGraph =  GraphRenderer((-50, 50), pygame.Rect(0, hstep*1,           graphWidth, hstep*4), green, linewidth)
+    volGraph =   GraphRenderer((-100, 1000), pygame.Rect(0, hstep*7,           graphWidth, hstep*4), cyan, linewidth)
 
     rrText =     TextRectRenderer(pygame.Rect(graphWidth, 0,        textWidth, hstep*4), "RR", "b/min",     fontcolor=green, borderwidth=linewidth)
     vteText = TextRectRenderer(pygame.Rect(graphWidth, hstep*4,  textWidth, hstep*4), "VTe", "ml", fontcolor=cyan,  borderwidth=linewidth)
