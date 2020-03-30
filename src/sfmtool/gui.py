@@ -16,7 +16,7 @@ black = (0,0,0)
 
 
 class GraphRenderer(object):
-    def __init__(self, rect, color, width=3, reflines=[], bordercolor=border, borderwidth=3):
+    def __init__(self, minyrange, rect, color, width=3, reflines=[0.0], bordercolor=border, borderwidth=3):
         self.x0, self.y0, self.width, self.height = rect
         self.rect = rect
         self.color = color
@@ -25,7 +25,8 @@ class GraphRenderer(object):
         self.bordercolor = bordercolor
         self.borderwidth = borderwidth
         self.rangefont = pygame.font.SysFont("menlottc", int(self.height * 0.1))
-        self.yrange = None
+        self.yrange = minyrange
+        self.minyrange = minyrange
 
     def render_bg(self, surf):
         if self.yrange is not None:
@@ -35,20 +36,30 @@ class GraphRenderer(object):
             surf.blit(ymaxtxt, ymaxtxt.get_rect(bottomleft=self.rect.topleft))
             #pygame.draw.rect(bgsurf, self.bordercolor, self.rect, self.borderwidth)
 
-    def scale_values(self, values):
+    def scale_y(self, v):
         ymin, ymax = self.yrange
-        numvals = float(len(values))
         yscale = ymax - ymin if ymin != ymax else 1.0
+        return self.y0 + self.height - (((v - ymin)/yscale) * self.height)
+
+    def scale_values(self, values):
+        numvals = float(len(values))
         for n,v in enumerate(values):
             x = self.x0 + ((n / numvals) * self.width)
-            y = self.y0 + self.height - (((v - ymin)/yscale) * self.height)
-            yield (x, y)
+            yield (x, self.scale_y(v))
 
     def render(self, surf, idx, values, yrange=None):
-        self.yrange = (min(values), max(values)) if yrange is None else yrange
+        if yrange is None:
+            vmin = min(self.minyrange[0], min(values))
+            vmax = max(self.minyrange[1], max(values))
+            self.yrange = (vmin, vmax)
+        else:
+            self.yrange = yrange
         pts = list(self.scale_values(values))
         prefix = pts[:idx+1]
         suffix = pts[idx+1:]
+        for refline in self.reflines:
+            y = self.scale_y(refline)
+            pygame.draw.line(surf, self.bordercolor, (0, y), (self.width, y), self.borderwidth)
         if len(prefix) > 2:
             pygame.draw.lines(surf, self.color, False, prefix, self.linewidth)
         if len(suffix) > 2:
@@ -99,36 +110,6 @@ class TextRectRenderer(object):
 
 TidalData = namedtuple("TidalData", ["VTi", "VTe", "RR", "MVe"])
 
-def format_gui_totalized(totalizedReadings, sr, datalen):
-    v_error = 0.0
-    print("Formatter, sr={}, datalen={}".format(sr, datalen))
-    statsaccum = deque(maxlen=datalen)
-    veaccum = deque(maxlen=3)
-    for r in totalizedReadings:
-        statsaccum.append(r.V)
-        v_error = v_error - (0.01 * (v_error-min(statsaccum)))
-        tidal_data = TidalData(0.0, 0.0, 0.0, 0.0)
-        try:
-            if(r.n % sr == 0):
-                signal = np.array(statsaccum)
-                resp_extrema = biopeaks.resp.resp_extrema(signal, sr)
-                sigs = signal[resp_extrema]
-                if len(resp_extrema) > 4:
-                    if sigs[-1] < sigs[-2]:
-                        VTi = sigs[-2] - sigs[-3]
-                        VTe = sigs[-2] - sigs[-1]
-                    else:
-                        VTe = sigs[-3] - sigs[-2]
-                        VTi = sigs[-1] - sigs[-2]
-                    veaccum.append(VTe)
-                    period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, sr)
-                    avgVTe = sum(veaccum)/len(veaccum)
-                    mve = (rate[-1] * avgVTe)/1000.0
-                    tidal_data = TidalData(VTi, VTe, rate[-1], mve)
-        except:
-            pass
-        yield (r.slm, r.V-v_error, tidal_data)
-
 
 def parseArgs():
     parser = argparse.ArgumentParser(description='Read data from Sensirion SFM3x00 sensor over I2C.')
@@ -177,8 +158,8 @@ def main():
 
     hstep = int(height / 12.)
 
-    flowGraph =  GraphRenderer(pygame.Rect(0, hstep*1,           graphWidth, hstep*4), green, linewidth)
-    volGraph =   GraphRenderer(pygame.Rect(0, hstep*7,           graphWidth, hstep*4), cyan, linewidth)
+    flowGraph =  GraphRenderer((-50, 50), pygame.Rect(0, hstep*1,           graphWidth, hstep*4), green, linewidth)
+    volGraph =   GraphRenderer((-500, 1000), pygame.Rect(0, hstep*7,           graphWidth, hstep*4), cyan, linewidth)
 
     rrText =     TextRectRenderer(pygame.Rect(graphWidth, 0,        textWidth, hstep*4), "RR", "b/min",     fontcolor=green, borderwidth=linewidth)
     vteText = TextRectRenderer(pygame.Rect(graphWidth, hstep*4,  textWidth, hstep*4), "VTe", "ml", fontcolor=cyan,  borderwidth=linewidth)
@@ -205,10 +186,37 @@ def main():
         readings = s.readings()
         timed = sample_clock(readings, args.sample_rate)
         totalized = totalize_readings(timed)
-        formatted = format_gui_totalized(totalized, args.sample_rate, 2*datalen)
         running = True
         n = 0
-        for (slm, V, tidal) in formatted:
+        v_error = 0.0
+        print("Formatter, sr={}, datalen={}".format(args.sample_rate, datalen))
+        statsaccum = deque(maxlen=datalen*2)
+        veaccum = deque(maxlen=3)
+        for r in totalized:
+            statsaccum.append(r.V)
+            tidal_data = None
+            try:
+                if(r.n % sr == 0):
+                    signal = np.array(statsaccum)
+                    resp_extrema = biopeaks.resp.resp_extrema(signal, sr)
+                    sigs = signal[resp_extrema]
+                    if len(resp_extrema) > 4:
+                        if sigs[-1] < sigs[-2]:
+                            VTi = sigs[-2] - sigs[-3]
+                            VTe = sigs[-2] - sigs[-1]
+                        else:
+                            VTe = sigs[-3] - sigs[-2]
+                            VTi = sigs[-1] - sigs[-2]
+                        veaccum.append(VTe)
+                        period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, sr)
+                        avgVTe = sum(veaccum)/len(veaccum)
+                        mve = (rate[-1] * avgVTe)/1000.0
+                        tidal_data = TidalData(VTi, VTe, rate[-1], mve)
+            except:
+                pass
+
+            slm, V, tidal =  r.slm, r.V-v_error, tidal_data
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
@@ -222,6 +230,10 @@ def main():
             fpstimes.append(time.time())
 
             idx = n % datalen
+
+            if(idx == 0):
+                v_error = min(volPoints)
+
             flowPoints[idx] = slm
             if len(flowPoints) > 2:
                 flowGraph.render(screen, idx, flowPoints)
@@ -230,7 +242,7 @@ def main():
             if len(volPoints) > 2:
                 volGraph.render(screen, idx, volPoints)
 
-            if tidal != lastTidal:
+            if tidal is not None:
                 currentbg = bg.copy()
                 fps = (len(fpstimes) - 1) / (fpstimes[-1] - fpstimes[0])
                 textsurf = font.render(
