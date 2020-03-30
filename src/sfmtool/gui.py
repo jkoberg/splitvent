@@ -1,9 +1,12 @@
 
-import time, math
-from collections import deque
-
+import time, math, argparse
+from collections import deque, namedtuple
 import pygame
 from pygame.locals import *
+import numpy as np
+import biopeaks.resp
+
+from sfm3x00 import *
 
 cyan = (127,255,223)
 yellow = (255, 255, 127)
@@ -92,15 +95,62 @@ class TextRectRenderer(object):
         value = self.largefont.render(str(value), True, self.fontcolor, self.bgcolor)
         surf.blit(value, value.get_rect(center=self.AC2))
 
+
+
+TidalData = namedtuple("TidalData", ["VTi", "VTe", "RR", "MVe"])
+
+def format_gui_totalized(totalizedReadings, sr, datalen):
+    v_error = 0.0
+    print("Formatter, sr={}, datalen={}".format(sr, datalen))
+    statsaccum = deque(maxlen=datalen)
+    veaccum = deque(maxlen=3)
+    for r in totalizedReadings:
+        statsaccum.append(r.V)
+        v_error = v_error - (0.01 * (v_error-min(statsaccum)))
+        tidal_data = TidalData(0.0, 0.0, 0.0, 0.0)
+        try:
+            signal = np.array(statsaccum)
+            resp_extrema = biopeaks.resp.resp_extrema(signal, sr)
+            sigs = signal[resp_extrema]
+            if len(resp_extrema) > 4:
+                if sigs[-1] < sigs[-2]:
+                    VTi = sigs[-2] - sigs[-3]
+                    VTe = sigs[-2] - sigs[-1]
+                else:
+                    VTe = sigs[-3] - sigs[-2]
+                    VTi = sigs[-1] - sigs[-2]
+                veaccum.append(VTe)
+                period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, sr)
+                avgVTe = sum(veaccum)/len(veaccum)
+                mve = (rate[-1] * avgVTe)/1000.0
+                tidal_data = TidalData(VTi, VTe, rate[-1], mve)
+        except:
+            pass
+        yield (r.slm, r.V-v_error, tidal_data)
+
+
+def parseArgs():
+    parser = argparse.ArgumentParser(description='Read data from Sensirion SFM3x00 sensor over I2C.')
+
+    parser.add_argument("--fake", dest='sensor_class',
+                        action='store_const', const=FakeSensor, default=SFM3x00,
+                        help='Use synthetic sensor data for demo')
+
+    parser.add_argument("--samplerate", dest='sample_rate', type=float, default=30.0,
+                        help='Flow measurement sampling rate')
+
+    parser.add_argument("--duration", dest='display_duration', type=float, default=15.0,
+                        help='number of seconds of readings to display')
+
+    return parser.parse_args()
+
+
 def main():
     print("splitvent monitoring by Joe Koberg et al, http://github.com/jkoberg/splitvent")
+    args = parseArgs()
 
     reqsize = (1024, 600)
-    FPS = 30
-
     pygame.init()
-
-    fpsClock = pygame.time.Clock()
 
     pygame.display.set_caption("splitvent")
     screen = pygame.display.set_mode(reqsize)
@@ -115,11 +165,9 @@ def main():
     fpstimes = deque(maxlen=10)
     fpstimes.append(0.0)
 
-    datalen = 1233
-    datapoints = [0.0] * datalen
-
-    datalen2 = 300
-    datapoints2 = [0.0] * datalen2
+    datalen = int(args.sample_rate * args.display_duration)
+    flowPoints = [0.0] * datalen
+    volPoints = [0.0] * datalen
 
     wstep = int(width / 12.)
 
@@ -132,7 +180,7 @@ def main():
     volGraph =   GraphRenderer(pygame.Rect(0, hstep*7,           graphWidth, hstep*4), cyan, linewidth)
 
     rrText =     TextRectRenderer(pygame.Rect(graphWidth, 0,        textWidth, hstep*4), "RR", "b/min",     fontcolor=green, borderwidth=linewidth)
-    volumeText = TextRectRenderer(pygame.Rect(graphWidth, hstep*4,  textWidth, hstep*4), "VTe", "ml", fontcolor=cyan,  borderwidth=linewidth)
+    vteText = TextRectRenderer(pygame.Rect(graphWidth, hstep*4,  textWidth, hstep*4), "VTe", "ml", fontcolor=cyan,  borderwidth=linewidth)
     vtitext =    TextRectRenderer(pygame.Rect(graphWidth, hstep*8,  textWidth, hstep*2), "VTi", "ml",    fontcolor=cyan,  borderwidth=linewidth)
     mvetext =    TextRectRenderer(pygame.Rect(graphWidth, hstep*10, textWidth, hstep*2), "MVe", "l/min", fontcolor=cyan,  borderwidth=linewidth)
 
@@ -144,61 +192,64 @@ def main():
     flowGraph.render_bg(bg)
     volGraph.render_bg(bg)
     rrText.render_bg(bg)
-    volumeText.render_bg(bg)
+    vteText.render_bg(bg)
     vtitext.render_bg(bg)
     mvetext.render_bg(bg)
 
     currentbg = bg
 
-    n = 0
-    running = True
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-              running = False
-            elif event.type == pygame.KEYDOWN and event.key in [pygame.K_ESCAPE, pygame.K_q]:
-              running = False
+    lastTidal = None
+    with args.sensor_class() as s:
+        print_header(s)
+        readings = s.readings()
+        timed = sample_clock(readings, args.sample_rate)
+        totalized = totalize_readings(timed)
+        formatted = format_gui_totalized(totalized, args.sample_rate, 2*datalen)
+        running = True
+        n = 0
+        for (slm, V, tidal) in formatted:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN and event.key in [pygame.K_ESCAPE, pygame.K_q]:
+                    running = False
+            if not running:
+                break
 
-        screen.blit(currentbg, (0,0))
+            screen.blit(currentbg, (0,0))
 
-        fpstimes.append(time.time())
+            fpstimes.append(time.time())
 
-        x = (n % 50) / 50.0
-        datavalue = math.sin(2 * math.pi * x)
-        idx = n % datalen
-        datapoints[idx] = datavalue
-        if len(datapoints) > 2:
-            flowGraph.render(screen, idx, datapoints)
-            #pygame.draw.lines(screen, (127,255,255), False, pointlist, 3)
+            idx = n % datalen
+            flowPoints[idx] = slm
+            if len(flowPoints) > 2:
+                flowGraph.render(screen, idx, flowPoints)
 
-        datavalue2 = math.cos(2 * math.pi * x)
-        idx2 = n % datalen2
-        datapoints2[idx2] = datavalue2
-        if len(datapoints2) > 2:
-            volGraph.render(screen, idx2, datapoints2)
+            volPoints[idx] = V
+            if len(volPoints) > 2:
+                volGraph.render(screen, idx, volPoints)
 
-        if (n % FPS) == 1:
-            currentbg = bg.copy()
-            fps = (len(fpstimes) - 1) / (fpstimes[-1] - fpstimes[0])
-            textsurf = font.render(
-                "{:4.0f} fps n={:10d}".format(fps, n),
-                True,
-                (255,255,255),
-                (0,0,0)
-            )
-            currentbg.blit(textsurf, (0,0))
-            flowGraph.render_bg(currentbg)
-            volGraph.render_bg(currentbg)
-            rrText.render(currentbg, "{:5.1f}".format(datavalue*10))
-            volumeText.render(currentbg,"{:5.0f}".format(datavalue2*1000))
-            vtitext.render(currentbg, "{:5.0f}".format(datavalue2*1000))
-            mvetext.render(currentbg, "{:5.0f}".format(datavalue2*100))
+            if tidal != lastTidal:
+                currentbg = bg.copy()
+                fps = (len(fpstimes) - 1) / (fpstimes[-1] - fpstimes[0])
+                textsurf = font.render(
+                    "{:4.0f} fps n={:10d}".format(fps, n),
+                    True,
+                    (255,255,255),
+                    (0,0,0)
+                )
+                currentbg.blit(textsurf, (0,0))
+                flowGraph.render_bg(currentbg)
+                volGraph.render_bg(currentbg)
+                rrText.render(currentbg, "{:5.1f}".format(tidal.RR))
+                vteText.render(currentbg,"{:5.0f}".format(tidal.VTe))
+                vtitext.render(currentbg, "{:5.0f}".format(tidal.VTi))
+                mvetext.render(currentbg, "{:5.0f}".format(tidal.MVe))
 
-        pygame.display.update()
-        fpsClock.tick(FPS)
-        n = n + 1
-    print("Exiting normally.")
-    pygame.quit()
+            pygame.display.update()
+            n = n + 1
+        print("Exiting normally.")
+        pygame.quit()
 
 
 if __name__=="__main__":

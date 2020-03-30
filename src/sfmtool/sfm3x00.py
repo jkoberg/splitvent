@@ -140,7 +140,7 @@ class FakeSensor(object):
     def readings(self):
         n = 0
         while True:
-            v = n / 800.0
+            v = n / 120.0
             slm = 60 * math.sin(v * 2 * math.pi)
             yield SfmReading(slm)
             n = (n + 1) % 800
@@ -163,10 +163,8 @@ def sample_clock(valueGenerator, sr=100.0, clock=time.time, sleep=time.sleep):
         sleep(t_sleep)
 
 
-def totalize_readings(timedReadings, nf=1500, sr=100):
-    print("Totalize, n={} sr={}".format(nf, sr))
+def totalize_readings(timedReadings):
     V = 0.0
-    n = int(nf)
     for r in timedReadings:
         dV = (r.dt * r.slm * 1000.0) / 60.0
         V = V + dV
@@ -270,9 +268,11 @@ def format_totalized(totalizedReadings, sr=100.0, display_duration=12.0, skip=No
                     tidal_str
                     )
                 last_print_t = print_t
-             
 
-def main():
+
+
+
+def parseArgs():
     parser = argparse.ArgumentParser(description='Read data from Sensirion SFM3x00 sensor over I2C.')
 
     parser.add_argument("--fake", dest='sensor_class',
@@ -285,20 +285,21 @@ def main():
     parser.add_argument("--duration", dest='display_duration', type=float, default=15.0,
                         help='number of seconds of readings to display')
 
-    args = parser.parse_args()
+    return parser.parse_args()
 
+
+def main():
+    args = parseArgs()
 
     with args.sensor_class() as s:
         print_header(s)
         readings = s.readings()
         timed = sample_clock(readings, args.sample_rate)
-        totalized = totalize_readings(timed, 2*args.sample_rate*args.display_duration, args.sample_rate)
+        totalized = totalize_readings(timed)
         formatted = format_totalized(totalized, args.sample_rate, args.display_duration)
         for line in formatted:
             print(line)
-        
-        
-        
+
     
 
 if __name__ == "__main__":
