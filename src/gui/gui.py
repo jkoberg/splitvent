@@ -130,10 +130,10 @@ def main():
     flowGraph =  GraphRenderer(screen,    pygame.Rect(0, hstep*1,           graphWidth, hstep*4), green, linewidth)
     volGraph =   GraphRenderer(screen,    pygame.Rect(0, hstep*7,           graphWidth, hstep*4), cyan, linewidth)
 
-    flowText =   TextRectRenderer(screen, pygame.Rect(graphWidth, 0,        textWidth, hstep*4), "RR", "mL",     fontcolor=green, borderwidth=linewidth)
-    volumeText = TextRectRenderer(screen, pygame.Rect(graphWidth, hstep*4,  textWidth, hstep*4), "VTe", "b/min", fontcolor=cyan,  borderwidth=linewidth)
-    vtitext =    TextRectRenderer(screen, pygame.Rect(graphWidth, hstep*8,  textWidth, hstep*2), "VTi", "mL",    fontcolor=cyan,  borderwidth=linewidth)
-    mvetext =    TextRectRenderer(screen, pygame.Rect(graphWidth, hstep*10, textWidth, hstep*2), "MVe", "L/min", fontcolor=cyan,  borderwidth=linewidth)
+    rrText =     TextRectRenderer(screen, pygame.Rect(graphWidth, 0,        textWidth, hstep*4), "RR", "b/min",     fontcolor=green, borderwidth=linewidth)
+    volumeText = TextRectRenderer(screen, pygame.Rect(graphWidth, hstep*4,  textWidth, hstep*4), "VTe", "ml", fontcolor=cyan,  borderwidth=linewidth)
+    vtitext =    TextRectRenderer(screen, pygame.Rect(graphWidth, hstep*8,  textWidth, hstep*2), "VTi", "ml",    fontcolor=cyan,  borderwidth=linewidth)
+    mvetext =    TextRectRenderer(screen, pygame.Rect(graphWidth, hstep*10, textWidth, hstep*2), "MVe", "l/min", fontcolor=cyan,  borderwidth=linewidth)
 
     bg = pygame.Surface(size)
     bg.fill(pygame.Color('#000000'))
@@ -142,7 +142,7 @@ def main():
 
     flowGraph.render_bg(bg)
     volGraph.render_bg(bg)
-    flowText.render_bg(bg)
+    rrText.render_bg(bg)
     volumeText.render_bg(bg)
     vtitext.render_bg(bg)
     mvetext.render_bg(bg)
@@ -175,14 +175,18 @@ def main():
         if len(datapoints) > 2:
             flowGraph.render(idx, datapoints)
             #pygame.draw.lines(screen, (127,255,255), False, pointlist, 3)
-        flowText.render("{:5.0f}".format(datavalue*1000))
+        rrText.render("{:5.1f}".format(datavalue*10))
 
         datavalue2 = math.cos(2 * math.pi * x)
         idx2 = n % datalen2
         datapoints2[idx2] = datavalue2
         if len(datapoints2) > 2:
             volGraph.render(idx2, datapoints2)
-        volumeText.render("{:5.1f}".format(datavalue2*10))
+        volumeText.render("{:5.0f}".format(datavalue2*1000))
+
+        vtitext.render("{:5.0f}".format(datavalue2*1000))
+        mvetext.render("{:5.0f}".format(datavalue2*100))
+
 
         pygame.display.update()
         n = n + 1
