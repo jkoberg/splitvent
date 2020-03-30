@@ -188,7 +188,6 @@ def main():
         totalized = totalize_readings(timed)
         running = True
         n = 0
-        v_error = 0.0
         print("Formatter, sr={}, datalen={}".format(args.sample_rate, datalen))
         statsaccum = deque(maxlen=datalen*2)
         veaccum = deque(maxlen=3)
@@ -215,7 +214,7 @@ def main():
             except:
                 pass
 
-            slm, V, tidal =  r.slm, r.V-v_error, tidal_data
+            slm, V, tidal =  r.slm, r.V, tidal_data
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -230,9 +229,6 @@ def main():
             fpstimes.append(time.time())
 
             idx = n % datalen
-
-            if(idx == 0):
-                v_error = min(volPoints)
 
             flowPoints[idx] = slm
             if len(flowPoints) > 2:
