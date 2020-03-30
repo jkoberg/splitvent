@@ -163,7 +163,7 @@ def sample_clock(valueGenerator, sr=100.0, clock=time.time, sleep=time.sleep):
         sleep(t_sleep)
 
 
-def totalize_readings(timedReadings, sr):
+def integrate_readings(timedReadings, sr):
     V = 0.0
     armed = False
     breathBuffer = collections.deque(maxlen=int(sr/2))
@@ -218,7 +218,7 @@ def print_header(s):
     print("Starting flow measurements")
 
 
-def format_totalized(totalizedReadings, sr=100.0, display_duration=12.0, skip=None):
+def format_integrated(integratedReadings, sr=100.0, display_duration=12.0, skip=None):
     last_print_t = 0
     last_n = 0
     v_error = 0.0
@@ -229,7 +229,7 @@ def format_totalized(totalizedReadings, sr=100.0, display_duration=12.0, skip=No
     accum = collections.deque(maxlen=skip)
     statsaccum = collections.deque(maxlen=int(sr*display_duration*2))
     veaccum = collections.deque(maxlen=3)
-    for r in totalizedReadings:
+    for r in integratedReadings:
         accum.append(r)
         statsaccum.append(r.V)
         if len(accum) == skip:
@@ -303,8 +303,8 @@ def main():
         print_header(s)
         readings = s.readings()
         timed = sample_clock(readings, args.sample_rate)
-        totalized = totalize_readings(timed, args.sample_rate)
-        formatted = format_totalized(totalized, args.sample_rate, args.display_duration)
+        integrated = integrate_readings(timed, args.sample_rate)
+        formatted = format_integrated(integrated, args.sample_rate, args.display_duration)
         for line in formatted:
             print(line)
 

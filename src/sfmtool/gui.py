@@ -186,7 +186,7 @@ def main():
         print_header(s)
         readings = s.readings()
         timed = sample_clock(readings, args.sample_rate)
-        totalized = totalize_readings(timed, args.sample_rate)
+        integrated = integrate_readings(timed, args.sample_rate)
         running = True
         last_tidal_time = 0.0
         last_tidal = None
@@ -194,7 +194,7 @@ def main():
         print("Formatter, sr={}, datalen={}".format(args.sample_rate, datalen))
         statsaccum = deque(maxlen=datalen*2)
         veaccum = deque(maxlen=3)
-        for r in totalized:
+        for r in integrated:
             statsaccum.append(r.V)
             tidal = None
             try:
