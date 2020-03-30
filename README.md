@@ -43,4 +43,5 @@ You'll see a UI like this:
 
   * Tobin Greensweig
   * Joe Koberg
+  * [Dan Lash](https://www.linkedin.com/in/danlash) 
   
