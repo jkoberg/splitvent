@@ -63,15 +63,16 @@ class TextRectRenderer(object):
 
 
 def main():
-    size = (1024, 600)
-    width, height = size
-    fontsize = int(height / 32)
-    
+    #size = (1024, 600)
     graphfrac = 0.80
     pygame.init()
     pygame.font.init()
     pygame.display.set_caption("splitvent")
-    screen = pygame.display.set_mode(size)
+    screen = pygame.display.set_mode()
+    size = screen.get_rect().size
+    width,height = size
+    fontsize = int(height / 32)
+    linewidth = int(height / 200)
     bg = pygame.Surface(size)
     bg.fill(pygame.Color('#000000'))
     font = pygame.font.SysFont("menlottc", 30)
@@ -81,8 +82,8 @@ def main():
     times = deque(maxlen=10)
     times.append(0.0)
     datapoints = deque(maxlen=width)
-    textMargin = 768
-    flowText = TextRectRenderer(screen, pygame.Rect(textMargin,0,1023,300), "VTe", "mL")
+    textMargin = width * 0.75
+    flowText = TextRectRenderer(screen, pygame.Rect(textMargin,0,width,height/2), "VTe", "mL", borderwidth=linewidth)
     while running:
         times.append(time.time())
         for event in pygame.event.get():
@@ -95,7 +96,7 @@ def main():
         y0 = height / 2
         pointlist = list((n,y+y0) for n,y in enumerate(datapoints))
         if len(datapoints) > 2:
-            draw_graph(screen, (0,30,textMargin,(height/2)-30), datapoints, (-1.0,1.0), [], cyan)
+            draw_graph(screen, (0,30,textMargin,(height/2)-30), datapoints, (-1.0,1.0), [], cyan, linewidth)
             #pygame.draw.lines(screen, (127,255,255), False, pointlist, 3)
         fps = (len(times) - 1) / (times[-1] - times[0])
         textsurf = font.render(
