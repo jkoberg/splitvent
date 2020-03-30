@@ -170,10 +170,10 @@ def integrate_readings(timedReadings, sr):
     last_reading = 0.0
     V_peak = 0.0
     for r in timedReadings:
-        if last_reading < 0 and r.slm >= 0 and r.t > idled_until and (r.t > peak_until or V < V_peak*0.10):
+        if last_reading < 0 and r.slm >= 0 and r.t > idled_until and (r.t > peak_until or V < V_peak*0.30):
             V = 0.0
             V_peak = 0.0
-            peak_until = r.t + 2
+            peak_until = r.t + 10
             idled_until = r.t + 0.25
         last_reading = r.slm
         dV = (r.dt * r.slm * 1000.0) / 60.0
