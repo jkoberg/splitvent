@@ -109,21 +109,22 @@ def format_gui_totalized(totalizedReadings, sr, datalen):
         v_error = v_error - (0.01 * (v_error-min(statsaccum)))
         tidal_data = TidalData(0.0, 0.0, 0.0, 0.0)
         try:
-            signal = np.array(statsaccum)
-            resp_extrema = biopeaks.resp.resp_extrema(signal, sr)
-            sigs = signal[resp_extrema]
-            if len(resp_extrema) > 4:
-                if sigs[-1] < sigs[-2]:
-                    VTi = sigs[-2] - sigs[-3]
-                    VTe = sigs[-2] - sigs[-1]
-                else:
-                    VTe = sigs[-3] - sigs[-2]
-                    VTi = sigs[-1] - sigs[-2]
-                veaccum.append(VTe)
-                period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, sr)
-                avgVTe = sum(veaccum)/len(veaccum)
-                mve = (rate[-1] * avgVTe)/1000.0
-                tidal_data = TidalData(VTi, VTe, rate[-1], mve)
+            if(r.n % sr == 0):
+                signal = np.array(statsaccum)
+                resp_extrema = biopeaks.resp.resp_extrema(signal, sr)
+                sigs = signal[resp_extrema]
+                if len(resp_extrema) > 4:
+                    if sigs[-1] < sigs[-2]:
+                        VTi = sigs[-2] - sigs[-3]
+                        VTe = sigs[-2] - sigs[-1]
+                    else:
+                        VTe = sigs[-3] - sigs[-2]
+                        VTi = sigs[-1] - sigs[-2]
+                    veaccum.append(VTe)
+                    period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, sr)
+                    avgVTe = sum(veaccum)/len(veaccum)
+                    mve = (rate[-1] * avgVTe)/1000.0
+                    tidal_data = TidalData(VTi, VTe, rate[-1], mve)
         except:
             pass
         yield (r.slm, r.V-v_error, tidal_data)
