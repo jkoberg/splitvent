@@ -14,6 +14,7 @@ cyan = (127,255,223)
 yellow = (255, 255, 127)
 green = (64,255,64)
 border = (95,63,63)
+background = (0,0,0)
 black = (0,0,0)
 
 
@@ -31,11 +32,12 @@ class GraphRenderer(object):
         self.minyrange = minyrange
 
     def render_bg(self, surf):
+        surf.fill(black, self.rect)
         return
         if self.yrange is not None:
-            ymintxt = self.rangefont.render(" {:<12.2f}".format(self.yrange[0]), True, self.bordercolor, black)
+            ymintxt = self.rangefont.render(" {:<12.2f}".format(self.yrange[0]), True, self.bordercolor, background)
             surf.blit(ymintxt, ymintxt.get_rect(topleft=self.rect.bottomleft))
-            ymaxtxt = self.rangefont.render(" {:<12.2f}".format(self.yrange[1]), True, self.bordercolor, black)
+            ymaxtxt = self.rangefont.render(" {:<12.2f}".format(self.yrange[1]), True, self.bordercolor, background)
             surf.blit(ymaxtxt, ymaxtxt.get_rect(bottomleft=self.rect.topleft))
             #pygame.draw.rect(bgsurf, self.bordercolor, self.rect, self.borderwidth)
 
@@ -63,9 +65,9 @@ class GraphRenderer(object):
         prefix = pts[:idx+1]
         suffix = pts[idx+1:]
 
-        ymintxt = self.rangefont.render(" {:.2f}".format(yrange[0]), False, self.bordercolor, black)
+        ymintxt = self.rangefont.render(" {:.2f}".format(yrange[0]), False, self.bordercolor, background)
         surf.blit(ymintxt, ymintxt.get_rect(topleft=self.rect.bottomleft))
-        ymaxtxt = self.rangefont.render(" {:.2f}".format(yrange[1]), False, self.bordercolor, black)
+        ymaxtxt = self.rangefont.render(" {:.2f}".format(yrange[1]), False, self.bordercolor, background)
         surf.blit(ymaxtxt, ymaxtxt.get_rect(bottomleft=self.rect.topleft))
 
         for refline in self.reflines:
@@ -205,7 +207,7 @@ def main():
     mvetext =    TextRectRenderer(pygame.Rect(graphWidth, hstep*10, textWidth, hstep*2), "MVe", "l/min", fontcolor=cyan,  borderwidth=linewidth)
 
     bg = pygame.Surface(size)
-    bg.fill(pygame.Color('#000000'))
+    bg.fill(background)
 
     pygame.draw.line(bg, border, (0, hstep*6), (width, hstep*6), linewidth)
 
