@@ -39,9 +39,15 @@ Contributors to this project submit their work under a Creative Commons ShareAli
 
 * Power on the RPi
 
+* Hit ctrl-c a few times to stop the console app
+
+* run "git pull" to get latest GUI changes
+
+* logout
+
 You'll see a UI like this:
 
-![splitvent simple ui](docs/simpleui.jpg)
+![splitvent simple ui](docs/graphical_ui.jpg)
 
 # Thanks to the following contributors:
 
