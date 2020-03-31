@@ -1,5 +1,5 @@
+#!/usr/bin/env bash
 
-./src/turnon.sh
-python3 src/sfmtool/sfm3x00.py --fake
+./src/sfmtool/run.sh --fake $*
 
 
