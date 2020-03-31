@@ -1,6 +1,6 @@
 
 from fcntl import ioctl
-import math, struct, time, collections, argparse
+import math, struct, time, collections, argparse, multiprocessing
 
 import numpy as np
 import biopeaks.resp
@@ -189,6 +189,27 @@ def integrate_readings(timedReadings, sr):
         V = V + dV
         V_peak = max(V_peak, V)
         yield TotalizedReading(r.slm, r.n, r.t, r.dt, dV, V)
+
+def integrate_reading_groups(timedReadingGroups, sr):
+    V = 0.0
+    idled_until = 0.0
+    peak_until = 0.0
+    last_reading = 0.0
+    V_peak = 0.0
+    for group in timedReadingGroups:
+        output = []
+        for r in group:
+            if last_reading < 0 and r.slm >= 0 and r.t > idled_until and (r.t > peak_until or V < V_peak*0.30):
+                V = 0.0
+                V_peak = 0.0
+                peak_until = r.t + 10
+                idled_until = r.t + 0.25
+            last_reading = r.slm
+            dV = (r.dt * r.slm * 1000.0) / 60.0
+            V = V + dV
+            V_peak = max(V_peak, V)
+            output.append(TotalizedReading(r.slm, r.n, r.t, r.dt, dV, V))
+        yield output
 
 
 ANSI_WHITE_ON_BLUE = u"\x1b[37;44;1m"

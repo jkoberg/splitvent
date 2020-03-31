@@ -1,5 +1,6 @@
 
-import time, math, argparse, json
+import time, math, argparse, json, multiprocessing
+import multiprocessing as mp
 from collections import deque, namedtuple
 import pygame
 from pygame.locals import *
@@ -129,7 +130,7 @@ def parseArgs():
                         action='store_const', const=FakeSensor, default=SFM3x00,
                         help='Use synthetic sensor data for demo')
 
-    parser.add_argument("--samplerate", dest='sample_rate', type=float, default=30.0,
+    parser.add_argument("--samplerate", dest='sample_rate', type=float, default=50.0,
                         help='Flow measurement sampling rate')
 
     parser.add_argument("--duration", dest='display_duration', type=float, default=15.0,
@@ -143,9 +144,23 @@ def parseArgs():
 
     return parser.parse_args()
 
-def stream_readings(sensorclass, devicename, samplerate):
+
+def stream_readings(sensorclass, samplerate, resultq, finishq):
     with sensorclass() as s:
-        yield from sample_clock(s.readings(), samplerate)
+        readings = s.readings()
+        for reading in sample_clock(readings, samplerate):
+            resultq.put(reading)
+            if not finishq.empty():
+                break
+
+def receive_readings(q):
+    while True:
+        rs = [q.get()]
+        while not q.empty():
+            rs.append(q.get())
+        yield rs
+    
+ 
 
 def main():
     print("splitvent monitoring by Joe Koberg et al, http://github.com/jkoberg/splitvent")
@@ -166,6 +181,9 @@ def main():
 
     fpstimes = deque(maxlen=10)
     fpstimes.append(0.0)
+
+    srtimes = deque(maxlen=int(args.sample_rate))
+    srtimes.append(0.0)
 
     datalen = int(args.sample_rate * args.display_duration)
     flowPoints = np.zeros(datalen)
@@ -201,10 +219,19 @@ def main():
     currentbg = bg
     screen.blit(currentbg, (0,0))
     pygame.display.update()
+    
+    resultq = mp.Queue()
+    finishq = mp.Queue()
+    child = mp.Process(
+        target = stream_readings,
+        args = (args.sensor_class, args.sample_rate, resultq, finishq)
+        )
+    child.start()
 
-    with args.sensor_class() as s:
+
+    try: # with args.sensor_class() as s:
         print("Formatter, sr={}, datalen={}".format(args.sample_rate, datalen))
-        print_header(s)
+        #print_header(s)
 
         if args.log_data:
             datestr = time.strftime("%Y%m%d_%H%M%S", time.localtime(time.time()))
@@ -214,46 +241,56 @@ def main():
         else:
             logfile = None
 
-        readings = s.readings()
+        #readings = s.readings()
         #timed = free_running(readings) 
-        timed = sample_clock(readings, args.sample_rate)
-        integrated = integrate_readings(timed, args.sample_rate)
+        #timed = sample_clock(readings, args.sample_rate)
 
+        timedgroups = receive_readings(resultq)
+        #integrated = integrate_readings(timed, args.sample_rate)
+        integrated_groups = integrate_reading_groups(timedgroups, args.sample_rate)
         running = True
         last_tidal_time = 0.0
         last_tidal = None
         n = 0
+        frames = 0
         t0 = None
         print("Formatter, sr={}, datalen={}".format(args.sample_rate, datalen))
         statsaccum = np.zeros(datalen*2)
         veaccum = deque(maxlen=3)
-        for r in integrated:
-            if t0 is None:
-                t0 = r.t
-            if logfile is not None:
-                logfile.write('{{"t":{:.6f}, "slm":{:.2f}}}\n'.format(r.t-t0, r.slm))
-            statsaccum = np.roll(statsaccum, -1)
-            statsaccum[-1] = r.V
+        for group in integrated_groups:
             tidal = None
-            try:
-                if(r.n % args.sample_rate == 0): # compute tidal data once per second
-                    signal = statsaccum # np.array(statsaccum)
-                    resp_extrema = biopeaks.resp.resp_extrema(signal, args.sample_rate)
-                    sigs = signal[resp_extrema]
-                    if len(resp_extrema) > 4:
-                        if sigs[-1] < sigs[-2]:
-                            VTi = sigs[-2] - sigs[-3]
-                            VTe = sigs[-2] - sigs[-1]
-                        else:
-                            VTe = sigs[-3] - sigs[-2]
-                            VTi = sigs[-1] - sigs[-2]
-                        veaccum.append(VTe)
-                        period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, args.sample_rate)
-                        avgVTe = sum(veaccum)/len(veaccum)
-                        mve = (rate[-1] * avgVTe)/1000.0
-                        tidal = TidalData(VTi, VTe, rate[-1], mve)
-            except:
-                pass
+            for r in group:
+                srtimes.append(r.t)
+                if t0 is None:
+                    t0 = r.t
+                if logfile is not None:
+                    logfile.write('{{"t":{:.6f}, "slm":{:.2f}}}\n'.format(r.t-t0, r.slm))
+                statsaccum = np.roll(statsaccum, -1)
+                statsaccum[-1] = r.V
+                try:
+                    if(r.n % args.sample_rate == 0): # compute tidal data once per second
+                        signal = statsaccum # np.array(statsaccum)
+                        resp_extrema = biopeaks.resp.resp_extrema(signal, args.sample_rate)
+                        sigs = signal[resp_extrema]
+                        if len(resp_extrema) > 4:
+                            if sigs[-1] < sigs[-2]:
+                                VTi = sigs[-2] - sigs[-3]
+                                VTe = sigs[-2] - sigs[-1]
+                            else:
+                                VTe = sigs[-3] - sigs[-2]
+                                VTi = sigs[-1] - sigs[-2]
+                            veaccum.append(VTe)
+                            period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, args.sample_rate)
+                            avgVTe = sum(veaccum)/len(veaccum)
+                            mve = (rate[-1] * avgVTe)/1000.0
+                            tidal = TidalData(VTi, VTe, rate[-1], mve)
+                except:
+                    pass
+
+                idx = n % datalen
+                flowPoints[idx] = r.slm
+                volPoints[idx] = r.V
+                n = n + 1
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -267,23 +304,20 @@ def main():
 
             fpstimes.append(time.time())
 
-            idx = n % datalen
-
-            flowPoints[idx] = r.slm
             if len(flowPoints) > 2:
                 flowGraph.render(screen, idx, flowPoints)
 
-            volPoints[idx] = r.V
             if len(volPoints) > 2:
                 volGraph.render(screen, idx, volPoints)
 
-            if tidal is not None and tidal != last_tidal and (r.t - last_tidal_time > 0.5) :
+            if tidal is not None: # and tidal != last_tidal and (r.t - last_tidal_time > 0.5) :
                 last_tidal = tidal
                 last_tidal_time = r.t
                 currentbg = bg.copy()
                 fps = (len(fpstimes) - 1) / (fpstimes[-1] - fpstimes[0])
+                srcomputed = (len(srtimes) - 1) / (srtimes[-1] - srtimes[0])
                 textsurf = font.render(
-                    "{:4.0f} fps n={:10d}".format(fps, n),
+                    "{:4.0f} fps n={:10d} sr={:.2f}".format(fps, n, srcomputed),
                     True,
                     (255,255,255),
                     (0,0,0)
@@ -298,9 +332,12 @@ def main():
 
             if not args.quiet:
                 pygame.display.update()
-            n = n + 1
+            frames = frames + 1
         print("Exiting normally.")
         pygame.quit()
+    finally:
+        finishq.put("Finish")
+        child.join()
 
 
 if __name__=="__main__":
