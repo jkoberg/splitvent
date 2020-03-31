@@ -15,7 +15,7 @@ Contributors to this project submit their work under a Creative Commons ShareAli
 
 # Video Updates
 
-* [SplitVent Daily Update March 30](https://www.youtube.com/watch?v=iDRBVGAhckk&fbclid=IwAR0MqLy45Cyf8XVUFYoJnXzKGLTCjBQzCS5fej4EqMJXH3xToOxuD2Zqblo) - Showcase improvements to the UI, a 3D printed cap to the flow sensor, revisions to valves including larger handles that make it easier to operate.
+* [SplitVent Daily Update March 30](https://www.youtube.com/watch?v=iDRBVGAhckk) - Showcase improvements to the UI, a 3D printed cap to the flow sensor, revisions to valves including larger handles that make it easier to operate.
 
 * [SplitVent System Description March 29](https://www.youtube.com/watch?v=Um-QvDB08Cw&t=4s) - Demonstrate how restricter valves and flow monitoring can allow quality vantilation to multiple patients with one ventilator.
 
