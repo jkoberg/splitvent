@@ -38,38 +38,42 @@ class GraphRenderer(object):
             surf.blit(ymaxtxt, ymaxtxt.get_rect(bottomleft=self.rect.topleft))
             #pygame.draw.rect(bgsurf, self.bordercolor, self.rect, self.borderwidth)
 
-    def scale_y(self, v):
-        ymin, ymax = self.yrange
+    def scale_values(self, values, yrange):
+        xstep = self.width / values.size
+        xints = np.arange(0, self.width, xstep)
+        xs = xints + self.x0
+        ymin, ymax = yrange
         yscale = ymax - ymin if ymin != ymax else 1.0
-        return self.y0 + self.height - (((v - ymin)/yscale) * self.height)
+        yoffset = self.y0 + self.height
+        ys = yoffset - (((values - ymin ) / yscale) * self.height)
+        return np.column_stack((xs, ys))
 
-    def scale_values(self, values):
-        numvals = float(len(values))
-        for n,v in enumerate(values):
-            x = self.x0 + ((n / numvals) * self.width)
-            yield (x, self.scale_y(v))
+    def scale_y(self, v, yrange):
+        ymin, ymax = yrange
+        yscale = ymax - ymin if ymin != ymax else 1.0
+        return self.y0 + self.height - (((v - ymin) / yscale) * self.height)
 
     def render(self, surf, idx, values, yrange=None):
         if yrange is None:
-            vmin = min(self.minyrange[0], min(values))
-            vmax = max(self.minyrange[1], max(values))
-            self.yrange = (vmin, vmax)
-        else:
-            self.yrange = yrange
-        pts = list(self.scale_values(values))
+            vmin = min(self.minyrange[0], values.min())
+            vmax = max(self.minyrange[1], values.max())
+            yrange = (vmin, vmax)
+        pts = self.scale_values(values, yrange)
         prefix = pts[:idx+1]
         suffix = pts[idx+1:]
 
-        ymintxt = self.rangefont.render(" {:<12.2f}".format(self.yrange[0]), True, self.bordercolor, black)
+        ymintxt = self.rangefont.render(" {:.2f}".format(yrange[0]), False, self.bordercolor, black)
         surf.blit(ymintxt, ymintxt.get_rect(topleft=self.rect.bottomleft))
-        ymaxtxt = self.rangefont.render(" {:<12.2f}".format(self.yrange[1]), True, self.bordercolor, black)
+        ymaxtxt = self.rangefont.render(" {:.2f}".format(yrange[1]), False, self.bordercolor, black)
         surf.blit(ymaxtxt, ymaxtxt.get_rect(bottomleft=self.rect.topleft))
+
         for refline in self.reflines:
-            y = self.scale_y(refline)
+            y = self.scale_y(refline, yrange)
             pygame.draw.line(surf, self.bordercolor, (0, y), (self.width, y), self.borderwidth)
-        if len(prefix) > 2:
+
+        if prefix.size > 2:
             pygame.draw.lines(surf, self.color, False, prefix, self.linewidth)
-        if len(suffix) > 2:
+        if suffix.size > 2:
             pygame.draw.lines(surf, self.color, False, suffix, self.linewidth)
 
 
@@ -110,7 +114,7 @@ class TextRectRenderer(object):
         bgsurf.blit(self.surf, self.rect.topleft)
 
     def render(self, surf, value):
-        value = self.largefont.render(str(value), True, self.fontcolor, self.bgcolor)
+        value = self.largefont.render(str(value), False, self.fontcolor, self.bgcolor)
         surf.blit(value, value.get_rect(center=self.AC2))
 
 
@@ -139,6 +143,9 @@ def parseArgs():
 
     return parser.parse_args()
 
+def stream_readings(sensorclass, devicename, samplerate):
+    with sensorclass() as s:
+        yield from sample_clock(s.readings(), samplerate)
 
 def main():
     print("splitvent monitoring by Joe Koberg et al, http://github.com/jkoberg/splitvent")
@@ -161,8 +168,8 @@ def main():
     fpstimes.append(0.0)
 
     datalen = int(args.sample_rate * args.display_duration)
-    flowPoints = [0.0] * datalen
-    volPoints = [0.0] * datalen
+    flowPoints = np.zeros(datalen)
+    volPoints = np.zeros(datalen)
 
     wstep = int(width / 12.)
 
@@ -180,10 +187,10 @@ def main():
     mvetext =    TextRectRenderer(pygame.Rect(graphWidth, hstep*10, textWidth, hstep*2), "MVe", "l/min", fontcolor=cyan,  borderwidth=linewidth)
 
     bg = pygame.Surface(size)
+    bg.fill(pygame.Color('#000000'))
 
     pygame.draw.line(bg, border, (0, hstep*6), (width, hstep*6), linewidth)
 
-    bg.fill(pygame.Color('#000000'))
     flowGraph.render_bg(bg)
     volGraph.render_bg(bg)
     rrText.render_bg(bg)
@@ -196,6 +203,9 @@ def main():
     pygame.display.update()
 
     with args.sensor_class() as s:
+        print("Formatter, sr={}, datalen={}".format(args.sample_rate, datalen))
+        print_header(s)
+
         if args.log_data:
             datestr = time.strftime("%Y%m%d_%H%M%S", time.localtime(time.time()))
             filename = "splitvent-sn{}-{}hz-{}.log".format(str(s.serial_number), int(args.sample_rate), datestr)
@@ -203,28 +213,31 @@ def main():
             print("logging to " + filename)
         else:
             logfile = None
-        print_header(s)
+
         readings = s.readings()
+        #timed = free_running(readings) 
         timed = sample_clock(readings, args.sample_rate)
         integrated = integrate_readings(timed, args.sample_rate)
+
         running = True
         last_tidal_time = 0.0
         last_tidal = None
         n = 0
         t0 = None
         print("Formatter, sr={}, datalen={}".format(args.sample_rate, datalen))
-        statsaccum = deque(maxlen=datalen*2)
+        statsaccum = np.zeros(datalen*2)
         veaccum = deque(maxlen=3)
         for r in integrated:
             if t0 is None:
                 t0 = r.t
             if logfile is not None:
                 logfile.write('{{"t":{:.6f}, "slm":{:.2f}}}\n'.format(r.t-t0, r.slm))
-            statsaccum.append(r.V)
+            statsaccum = np.roll(statsaccum, -1)
+            statsaccum[-1] = r.V
             tidal = None
             try:
                 if(r.n % args.sample_rate == 0): # compute tidal data once per second
-                    signal = np.array(statsaccum)
+                    signal = statsaccum # np.array(statsaccum)
                     resp_extrema = biopeaks.resp.resp_extrema(signal, args.sample_rate)
                     sigs = signal[resp_extrema]
                     if len(resp_extrema) > 4:

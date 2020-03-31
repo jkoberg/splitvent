@@ -162,6 +162,15 @@ def sample_clock(valueGenerator, sr=100.0, clock=time.time, sleep=time.sleep):
         last_t = t
         sleep(t_sleep)
 
+def free_running(valueGenerator, clock=time.time):
+    print("Free Running")
+    last_t = clock()
+    n = 0
+    for slm in valueGenerator:
+        t = clock()
+        dt = t - last_t
+        last_t = t
+        yield TimedReading(slm.slm, n, t, dt)
 
 def integrate_readings(timedReadings, sr):
     V = 0.0
