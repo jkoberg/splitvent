@@ -24,11 +24,11 @@ Contributors to this project submit their work under a Creative Commons ShareAli
 
 ## 3D Printing Models
 
-* Models have been printed with FDM printers using PLA or PETG.
-* TPU can be used for an o-ring.
-* Other materials such as Med610, Dental SG/LT, and Teeth A2 can be used and should be considered for sterilization purposes. 
-
-* Models printed with FDM should use 10-20% infill with supports touching buildplate.
+* Splitter and flow restrictor model dimensions are optimized for FDM, SLA, SPD and DLP printers.
+* Print at best rsolution for your printer. FDM printers should use .2nn layer height and .12mm layer height for best results.
+* TPU material can be used to print o-ring models or use ISO 3601-012 o-rings.
+* Materials such as Med610, Dental SG/LT, and Teeth A2 should be considered for sterilization purposes.
+* Models printed using an FDM printer should use 10-20% infill with supports touching buildplate and a brim or raft is suggested when printing the flow restrictor body for stabilization.
 
 ## Monitoring Software
 
