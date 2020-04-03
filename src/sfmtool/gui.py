@@ -13,7 +13,7 @@ import biopeaks.resp
 
 from sfm3x00 import *
 
-pink = (255, 127, 127)
+yellow = (224, 224, 95)
 cyan = (127,255,223)
 yellow = (255, 255, 127)
 green = (64,255,64)
@@ -204,14 +204,13 @@ def tidalcalcs(statslen, sample_rate, inputq, finishq, outputq):
                 outputq.put(tidal)
         except:
             print("Warning: tidal failed")
-
         time.sleep(0.5)
         
 
 def main():
     args = parseArgs()
 
-    reqsize = (1024, 600)
+    reqsize = (1280, 720)
 
     pygame.display.set_caption("splitvent")
     screen = pygame.display.set_mode(reqsize)
@@ -235,17 +234,17 @@ def main():
 
     wstep = int(width / 12.)
 
-    graphWidth = wstep * 9
-    textWidth = wstep * 3
+    graphWidth = wstep * 10
+    textWidth = wstep * 2
 
     hstep = int(height / 12.)
 
-    pressGraph = GraphRenderer((0, 100),    pygame.Rect(0, hstep*0.5,         graphWidth, hstep*3), pink , linewidth)
+    pressGraph = GraphRenderer((0, 100),    pygame.Rect(0, hstep*0.5,         graphWidth, hstep*3), yellow , linewidth)
     flowGraph =  GraphRenderer((-50, 50),    pygame.Rect(0, hstep*4.5,         graphWidth, hstep*3), green, linewidth)
     volGraph =   GraphRenderer((-100, 1000), pygame.Rect(0, hstep*8.5,         graphWidth, hstep*3), cyan, linewidth)
 
-    pressTest = TextRectRenderer(pygame.Rect(graphWidth, 0, textWidth, hstep*2.5), "PPk", "cm H2O", fontcolor=pink, borderwidth=linewidth)
-    peepText = TextRectRenderer(pygame.Rect(graphWidth, hstep*2.5, textWidth, hstep*1.5), "PEEP", "cm H2O", fontcolor=pink, borderwidth=linewidth)
+    pressTest = TextRectRenderer(pygame.Rect(graphWidth, 0, textWidth, hstep*2.5), "Ppk", "cm H2O", fontcolor=yellow, borderwidth=linewidth)
+    peepText = TextRectRenderer(pygame.Rect(graphWidth, hstep*2.5, textWidth, hstep*1.5), "PEEP", "cm H2O", fontcolor=yellow, borderwidth=linewidth)
     rrText =     TextRectRenderer(pygame.Rect(graphWidth, hstep*4,        textWidth, hstep*2.5), "RR", "b/min",     fontcolor=green, borderwidth=linewidth)
     vteText = TextRectRenderer(pygame.Rect(graphWidth, hstep*6.5,  textWidth, hstep*2.5), "VTe", "ml", fontcolor=cyan,  borderwidth=linewidth)
     vtitext =    TextRectRenderer(pygame.Rect(graphWidth, hstep*9,  textWidth, hstep*1.5), "VTi", "ml",    fontcolor=cyan,  borderwidth=linewidth)
