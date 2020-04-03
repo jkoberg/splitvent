@@ -13,10 +13,11 @@ import biopeaks.resp
 
 from sfm3x00 import *
 
+pink = (255, 127, 127)
 cyan = (127,255,223)
 yellow = (255, 255, 127)
 green = (64,255,64)
-border = (95,63,63)
+border = (63,63,63)
 black = (0,0,0)
 
 FONT = "liberationsans"
@@ -100,7 +101,7 @@ class TextRectRenderer(object):
         self.hA = self.height * 0.75
         self.hB = self.height * 0.25
         self.smallfont = pygame.font.SysFont(FONT, int(self.height * 0.15))
-        self.largefont = pygame.font.SysFont(FONT, int(self.height * 0.25))
+        self.largefont = pygame.font.SysFont(FONT, int(self.height * 0.30))
         self.headertxt = self.smallfont.render(header, ANTIALIAS,  fontcolor, bgcolor)
         self.unittxt = self.smallfont.render(unit, ANTIALIAS, fontcolor, bgcolor)
         self.C1 = (int(self.width / 2.0), int(self.height/8.0))
@@ -239,21 +240,27 @@ def main():
 
     hstep = int(height / 12.)
 
-    flowGraph =  GraphRenderer((-50, 50), pygame.Rect(0, hstep*1,           graphWidth, hstep*4), green, linewidth)
-    volGraph =   GraphRenderer((-100, 1000), pygame.Rect(0, hstep*7,           graphWidth, hstep*4), cyan, linewidth)
+    pressGraph = GraphRenderer((0, 100),    pygame.Rect(0, hstep*0.5,         graphWidth, hstep*3), pink , linewidth)
+    flowGraph =  GraphRenderer((-50, 50),    pygame.Rect(0, hstep*4.5,         graphWidth, hstep*3), green, linewidth)
+    volGraph =   GraphRenderer((-100, 1000), pygame.Rect(0, hstep*8.5,         graphWidth, hstep*3), cyan, linewidth)
 
-    rrText =     TextRectRenderer(pygame.Rect(graphWidth, 0,        textWidth, hstep*4), "RR", "b/min",     fontcolor=green, borderwidth=linewidth)
-    vteText = TextRectRenderer(pygame.Rect(graphWidth, hstep*4,  textWidth, hstep*4), "VTe", "ml", fontcolor=cyan,  borderwidth=linewidth)
-    vtitext =    TextRectRenderer(pygame.Rect(graphWidth, hstep*8,  textWidth, hstep*2), "VTi", "ml",    fontcolor=cyan,  borderwidth=linewidth)
-    mvetext =    TextRectRenderer(pygame.Rect(graphWidth, hstep*10, textWidth, hstep*2), "MVe", "l/min", fontcolor=cyan,  borderwidth=linewidth)
+    pressTest = TextRectRenderer(pygame.Rect(graphWidth, 0, textWidth, hstep*2.5), "PPk", "cm H2O", fontcolor=pink, borderwidth=linewidth)
+    peepText = TextRectRenderer(pygame.Rect(graphWidth, hstep*2.5, textWidth, hstep*1.5), "PEEP", "cm H2O", fontcolor=pink, borderwidth=linewidth)
+    rrText =     TextRectRenderer(pygame.Rect(graphWidth, hstep*4,        textWidth, hstep*2.5), "RR", "b/min",     fontcolor=green, borderwidth=linewidth)
+    vteText = TextRectRenderer(pygame.Rect(graphWidth, hstep*6.5,  textWidth, hstep*2.5), "VTe", "ml", fontcolor=cyan,  borderwidth=linewidth)
+    vtitext =    TextRectRenderer(pygame.Rect(graphWidth, hstep*9,  textWidth, hstep*1.5), "VTi", "ml",    fontcolor=cyan,  borderwidth=linewidth)
+    mvetext =    TextRectRenderer(pygame.Rect(graphWidth, hstep*10.5, textWidth, hstep*1.5), "MVe", "l/min", fontcolor=cyan,  borderwidth=linewidth)
 
     #bg = pygame.Surface(size)
     #bg.fill(pygame.Color('#000000'))
 
     #pygame.draw.line(bg, border, (0, hstep*6), (graphWidth, hstep*6), linewidth)
 
+    pressGraph.render_bg(screen)
     flowGraph.render_bg(screen)
     volGraph.render_bg(screen)
+    pressTest.render_bg(screen)
+    peepText.render_bg(screen)
     rrText.render_bg(screen)
     vteText.render_bg(screen)
     vtitext.render_bg(screen)
@@ -330,8 +337,11 @@ def main():
 
             #screen.blit(currentbg, (0,0))
 
+            pressGraph.render_bg(screen)
             flowGraph.render_bg(screen)
             volGraph.render_bg(screen)
+            pressTest.render_bg(screen)
+            peepText.render_bg(screen) 
             rrText.render_bg(screen)
             vteText.render_bg(screen)
             vtitext.render_bg(screen)
@@ -340,10 +350,12 @@ def main():
             fpstimes.append(time.time())
 
             if len(flowPoints) > 2:
+                pressGraph.render(screen, idx, volPoints/10)
                 flowGraph.render(screen, idx, flowPoints)
 
             if len(volPoints) > 2:
                 volGraph.render(screen, idx, volPoints)
+
 
             if tidal is not None: # and tidal != last_tidal and (r.t - last_tidal_time > 0.5) :
                 #currentbg = bg.copy()
@@ -360,6 +372,8 @@ def main():
                 #screen.blit(textsurf, (0,0))
                 #flowGraph.render_bg(currentbg)
                 #volGraph.render_bg(currentbg)
+                pressTest.render(screen, "{:5.1f}".format(r.V / 10))
+                peepText.render(screen, "0.0")
                 rrText.render(screen, "{:5.1f}".format(tidal.RR))
                 vteText.render(screen,"{:5.0f}".format(tidal.VTe))
                 vtitext.render(screen, "{:5.0f}".format(tidal.VTi))
