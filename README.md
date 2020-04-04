@@ -17,7 +17,7 @@ Contributors to this project submit their work under a Creative Commons ShareAli
 
 * [April 4th Video Update](https://www.youtube.com/watch?v=DOzIB2Yd5sI) - Tobin discusses their progress testing the SplitVent system at the simulation lab at Indiana University.
 
-* [SplitVent Daily Update March 30](https://www.youtube.com/watch?v=iDRBVGAhckk&fbclid=IwAR0MqLy45Cyf8XVUFYoJnXzKGLTCjBQzCS5fej4EqMJXH3xToOxuD2Zqblo) - Showcase improvements to the UI, a 3D printed cap to the flow sensor, revisions to valves including larger handles that make it easier to operate.
+* [SplitVent Daily Update March 30](https://www.youtube.com/watch?v=iDRBVGAhckk) - Showcase improvements to the UI, a 3D printed cap to the flow sensor, revisions to valves including larger handles that make it easier to operate.
 
 * [SplitVent System Description March 29](https://www.youtube.com/watch?v=Um-QvDB08Cw&t=4s) - Demonstrate how restricter valves and flow monitoring can allow quality vantilation to multiple patients with one ventilator.
 
@@ -26,11 +26,11 @@ Contributors to this project submit their work under a Creative Commons ShareAli
 
 ## 3D Printing Models
 
-* Models have been printed with FDM printers using PLA or PETG.
-* TPU can be used for an o-ring.
-* Other materials such as Med610, Dental SG/LT, and Teeth A2 can be used and should be considered for sterilization purposes. 
-
-* Models printed with FDM should use 10-20% infill with supports touching buildplate.
+* Splitter and flow restrictor model dimensions are optimized for FDM, SLA, SPD and DLP printers.
+* Print at best rsolution for your printer. FDM printers should use .2mm layer height and .12mm layer height for best results.
+* TPU material can be used to print o-ring models or use ISO 3601-012 o-rings.
+* Materials such as Med610, Dental SG/LT, and Teeth A2 should be considered for sterilization purposes.
+* Models printed using an FDM printer should use 10-20% infill with supports touching buildplate and a brim or raft is suggested when printing the flow restrictor body for stabilization.
 
 ## Monitoring Software
 
