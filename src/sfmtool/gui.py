@@ -257,7 +257,7 @@ def tidalcalcs(statslen, sample_rate, inputq, finishq, outputq):
                 period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, sample_rate)
                 avgVTe = sum(veaccum)/len(veaccum)
                 mve = (rate[-1] * avgVTe)/1000.0
-                tidal = TidalData(VTi, VTe, rate[-1], mve)
+                tidal = TidalData(VTi, VTe, rate[-1], mve, 0.0, 0.0)
                 outputq.put(tidal)
         except:
             print("Warning: tidal failed")
