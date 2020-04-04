@@ -190,23 +190,71 @@ def clocked(valueGenerator, sr=100.0, clock=time.time, sleep=time.sleep):
 
 IntegratedVolume = namedtuple("IntegratedVolume", ["n", "t", "dT", "slm", "cmH2O", "dV", "V"])
 
+
+# sampling frequency: 50 Hz
+
+# * 0 Hz - 3 Hz
+# gain = 1
+# desired ripple = 5 dB
+# actual ripple = 3.413068400258439 dB
+
+# * 6 Hz - 25 Hz
+# gain = 0
+# desired attenuation = -40 dB
+# actual attenuation = -41.69789955584444 dB
+
+FILTER_TAP_NUM=23
+
+FILTER_TAPS = np.array([
+    -0.008459983352603806,
+    -0.010582798263089584,
+    -0.012780129287462883,
+    -0.010349404029602943,
+    -0.0007145724756105137,
+    0.017643172758530123,
+    0.04444326872995608,
+    0.07719367084343944,
+    0.11146843241997682,
+    0.14170350556112246,
+    0.16248248572368432,
+    0.1698871248832956,
+    0.16248248572368432,
+    0.14170350556112246,
+    0.11146843241997682,
+    0.07719367084343944,
+    0.04444326872995608,
+    0.017643172758530123,
+    -0.0007145724756105137,
+    -0.010349404029602943,
+    -0.012780129287462883,
+    -0.010582798263089584,
+    -0.008459983352603806
+])
+
+
+
 def integrate_readings(timedReadings):
     V = 0.0
     idled_until = 0.0
     peak_until = 0.0
     last_slm = 0.0
     V_peak = 0.0
-    for (n, t, dT, (slm, cmH2O)) in timedReadings:
-        if last_slm < 0 and slm >= 0 and t > idled_until and (t > peak_until or V < V_peak*0.1):
-            V = 0.0
-            V_peak = 0.0
-            peak_until = t + 10
-            idled_until = t + 0.25
-        last_slm = slm
-        dV = (dT * slm * 1000.0) / 60.0
-        V = V + dV
-        V_peak = max(V_peak, V)
-        yield IntegratedVolume(n, t, dT, slm, cmH2O, dV, V)
+    fbuf = deque(maxlen=FILTER_TAP_NUM)
+
+    for (n, t, dT, (rawslm, cmH2O)) in timedReadings:
+        fbuf.append(rawslm)
+        if(len(fbuf) >= FILTER_TAP_NUM):
+            slm = (FILTER_TAPS * fbuf).sum()
+            if last_slm < 0 and slm >= 0 and t > idled_until and (t > peak_until or V < V_peak*0.1):
+                V = 0.0
+                V_peak = 0.0
+                peak_until = t + 10
+                idled_until = t + 0.25
+            last_slm = slm
+            dV = (dT * slm * 1000.0) / 60.0
+            V = V + dV
+            V_peak = max(V_peak, V)
+            yield IntegratedVolume(n, t, dT, slm, cmH2O, dV, V)
 
 VolumePressureReading = namedtuple("VolumePressureReading", ["V", "cmH2O"])
 
