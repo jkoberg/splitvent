@@ -232,17 +232,20 @@ def receive_readings(q):
 
 def tidalcalcs(statslen, sample_rate, inputq, finishq, outputq):
     signal = np.zeros(statslen, dtype=np.float)
+    pressures = np.zeros(statslen, dtype=np.float)
     idx = 0
     veaccum = deque(maxlen=3)
     while True:
         if not finishq.empty():
             return
-        inputs = [inputq.get(timeout=5.0).V]
+        inputs = [inputq.get(timeout=5.0)]
         while not inputq.empty():
-            inputs.append(inputq.get().V)
+            inputs.append(inputq.get())
         n = min(len(inputs), signal.size)
         signal = np.roll(signal, -n) 
-        signal[-n:] = inputs[-n:]
+        pressures = np.roll(pressures, -n)
+        signal[-n:] = [i.V for i in inputs[-n:]]
+        pressures[-n:] = [i.cmH2O for i in inputs[-n:]]
         try:
             resp_extrema = biopeaks.resp.resp_extrema(signal, sample_rate)
             sigs = signal[resp_extrema]
@@ -257,7 +260,7 @@ def tidalcalcs(statslen, sample_rate, inputq, finishq, outputq):
                 period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, sample_rate)
                 avgVTe = sum(veaccum)/len(veaccum)
                 mve = (rate[-1] * avgVTe)/1000.0
-                tidal = TidalData(VTi, VTe, rate[-1], mve, 0.0, 0.0)
+                tidal = TidalData(VTi, VTe, rate[-1], mve, pressures.max(), pressures.min())
                 outputq.put(tidal)
         except:
             print("Warning: tidal failed")
@@ -298,7 +301,7 @@ def main():
 
     hstep = int(height / 12.)
 
-    pressGraph = GraphRenderer((0, 100),     pygame.Rect(0, hstep*0.5,         graphWidth, hstep*3), yellow , linewidth)
+    pressGraph = GraphRenderer((0, 35),      pygame.Rect(0, hstep*0.5,         graphWidth, hstep*3), yellow , linewidth)
     flowGraph =  GraphRenderer((-50, 50),    pygame.Rect(0, hstep*4.5,         graphWidth, hstep*3), green,   linewidth)
     volGraph =   GraphRenderer((-100, 1000), pygame.Rect(0, hstep*8.5,         graphWidth, hstep*3), cyan,    linewidth)
 
