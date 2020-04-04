@@ -20,7 +20,7 @@ HONEYWELL_SSC_DEFAULT_I2C_ADDR_7 = 0x78
 HoneywellSSCRange = namedtuple("HoneywellSSCRange", ["min", "max", "unit"])
 HoneywellSSCTransferFunction = namedtuple("HoneywellSSCTransferFunction", ["report_min", "report_max"])
 
-HONEYWELL_SSC_RANGECODE_005PG = HoneywellSSCRange(0.0, 5.0, "psig")
+HONEYWELL_SSC_RANGECODE_015PG = HoneywellSSCRange(0.0, 15.0, "psig")
 
 HONEYWELL_SSC_TRANSFERFUNC_A = HoneywellSSCTransferFunction(2**14 * 0.10, 2**14 * 0.90)
 
@@ -31,7 +31,7 @@ cmH2O_per_psi = 70.307
 class HoneywellSSC(object):
     """Read Honeywell SSC sensor readings over I2C"""
 
-    def __init__(self, range=HONEYWELL_SSC_RANGECODE_005PG, transferfunc=HONEYWELL_SSC_TRANSFERFUNC_A, address=HONEYWELL_SSC_DEFAULT_I2C_ADDR_2, bus=RASPI_DEFAULT_I2C_BUS):
+    def __init__(self, range=HONEYWELL_SSC_RANGECODE_015PG, transferfunc=HONEYWELL_SSC_TRANSFERFUNC_A, address=HONEYWELL_SSC_DEFAULT_I2C_ADDR_2, bus=RASPI_DEFAULT_I2C_BUS):
         self.range = range
         self.transferfunc = transferfunc
         self.report_scale = self.transferfunc.report_max - self.transferfunc.report_min
