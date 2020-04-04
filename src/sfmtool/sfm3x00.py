@@ -140,26 +140,26 @@ class FakeSensor(object):
     def readings(self):
         n = 0
         while True:
-            v = n / 120.0
+            time.sleep(0.002)
+            v = n / 150
             slm = 60 * math.sin(v * 2 * math.pi)
             yield SfmReading(slm)
-            n = (n + 1) % 800
+            n = (n + 1) % 750
 
 
 def sample_clock(valueGenerator, sr=100.0, clock=time.time, sleep=time.sleep):
     print("Clock, sr={}".format(sr))
     dwell = 1.0/sr
-    last_t = clock()
-    sleep(dwell)
-    t0 = clock()
-    n = 0
+    last_t = clock() - dwell
+    t0 = last_t
+    n = 0 
     for slm in valueGenerator:
         t = clock()
         deltaT = t - last_t
         yield TimedReading(slm.slm, n, t, deltaT)
         n = n + 1
-        t_sleep = max(0, ((n * dwell) + t0) - t)
         last_t = t
+        t_sleep = max(0, ((n * dwell) + t0) - t)
         sleep(t_sleep)
 
 def free_running(valueGenerator, clock=time.time):

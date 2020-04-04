@@ -1,10 +1,13 @@
 
-import time, math, argparse, json, multiprocessing
+import time, math, argparse, json, multiprocessing, queue
 import multiprocessing as mp
 from collections import deque, namedtuple
+print("splitvent monitoring system by Joe Koberg, March 2020.  https://github.com/jkoberg/splitvent")
+print("This work is provided under a Creative Commons Share Alike 4.0 license.")
 import pygame
 from pygame.locals import *
 import numpy as np
+from numpy import float
 import biopeaks.resp
 
 
@@ -17,6 +20,8 @@ border = (95,63,63)
 background = (0,0,0)
 black = (0,0,0)
 
+FONT = "liberationsans"
+ANTIALIAS = True
 
 class GraphRenderer(object):
     def __init__(self, minyrange, rect, color, width=3, reflines=[0.0], bordercolor=border, borderwidth=3):
@@ -27,7 +32,7 @@ class GraphRenderer(object):
         self.reflines = reflines
         self.bordercolor = bordercolor
         self.borderwidth = borderwidth
-        self.rangefont = pygame.font.SysFont("menlottc", int(self.height * 0.1))
+        self.rangefont = pygame.font.SysFont(FONT, int(self.height * 0.1))
         self.yrange = minyrange
         self.minyrange = minyrange
 
@@ -35,15 +40,15 @@ class GraphRenderer(object):
         surf.fill(black, self.rect)
         return
         if self.yrange is not None:
-            ymintxt = self.rangefont.render(" {:<12.2f}".format(self.yrange[0]), True, self.bordercolor, background)
+            ymintxt = self.rangefont.render(" {:<12.2f}".format(self.yrange[0]), ANTIALIAS, self.bordercolor, black)
             surf.blit(ymintxt, ymintxt.get_rect(topleft=self.rect.bottomleft))
-            ymaxtxt = self.rangefont.render(" {:<12.2f}".format(self.yrange[1]), True, self.bordercolor, background)
+            ymaxtxt = self.rangefont.render(" {:<12.2f}".format(self.yrange[1]), ANTIALIAS, self.bordercolor, black)
             surf.blit(ymaxtxt, ymaxtxt.get_rect(bottomleft=self.rect.topleft))
             #pygame.draw.rect(bgsurf, self.bordercolor, self.rect, self.borderwidth)
 
     def scale_values(self, values, yrange):
         xstep = self.width / values.size
-        xints = np.arange(0, self.width, xstep)
+        xints = np.arange(0, self.width, xstep, dtype=float)[:values.size]
         xs = xints + self.x0
         ymin, ymax = yrange
         yscale = ymax - ymin if ymin != ymax else 1.0
@@ -65,9 +70,9 @@ class GraphRenderer(object):
         prefix = pts[:idx+1]
         suffix = pts[idx+1:]
 
-        ymintxt = self.rangefont.render(" {:.2f}".format(yrange[0]), False, self.bordercolor, background)
+        ymintxt = self.rangefont.render(" {:.2f}".format(yrange[0]), ANTIALIAS, self.bordercolor, black)
         surf.blit(ymintxt, ymintxt.get_rect(topleft=self.rect.bottomleft))
-        ymaxtxt = self.rangefont.render(" {:.2f}".format(yrange[1]), False, self.bordercolor, background)
+        ymaxtxt = self.rangefont.render(" {:.2f}".format(yrange[1]), ANTIALIAS, self.bordercolor, black)
         surf.blit(ymaxtxt, ymaxtxt.get_rect(bottomleft=self.rect.topleft))
 
         for refline in self.reflines:
@@ -96,10 +101,10 @@ class TextRectRenderer(object):
         self.surf = pygame.Surface(self.size)
         self.hA = self.height * 0.75
         self.hB = self.height * 0.25
-        self.smallfont = pygame.font.SysFont("menlottc", int(self.height * 0.15))
-        self.largefont = pygame.font.SysFont("menlottc", int(self.height * 0.25))
-        self.headertxt = self.smallfont.render(header, True, fontcolor, bgcolor)
-        self.unittxt = self.smallfont.render(unit, True, fontcolor, bgcolor)
+        self.smallfont = pygame.font.SysFont(FONT, int(self.height * 0.15))
+        self.largefont = pygame.font.SysFont(FONT, int(self.height * 0.25))
+        self.headertxt = self.smallfont.render(header, ANTIALIAS,  fontcolor, bgcolor)
+        self.unittxt = self.smallfont.render(unit, ANTIALIAS, fontcolor, bgcolor)
         self.C1 = (int(self.width / 2.0), int(self.height/8.0))
         self.L1 = (int(self.width * 0.05), int(self.height/8.0))
         self.AC2 = (rect.left + int(self.width / 2.0), rect.top + int(self.height/2.0))
@@ -117,7 +122,7 @@ class TextRectRenderer(object):
         bgsurf.blit(self.surf, self.rect.topleft)
 
     def render(self, surf, value):
-        value = self.largefont.render(str(value), False, self.fontcolor, self.bgcolor)
+        value = self.largefont.render(str(value), ANTIALIAS, self.fontcolor, self.bgcolor)
         surf.blit(value, value.get_rect(center=self.AC2))
 
 
@@ -147,29 +152,67 @@ def parseArgs():
     return parser.parse_args()
 
 
-def stream_readings(sensorclass, samplerate, resultq, finishq):
+def stream_readings(sensorclass, samplerate, resultq1, resultq2, finishq):
     with sensorclass() as s:
         readings = s.readings()
-        for reading in sample_clock(readings, samplerate):
-            resultq.put(reading)
+        for reading in integrate_readings(sample_clock(readings, samplerate), samplerate):
+            resultq1.put(reading)
+            resultq2.put(reading.V)
             if not finishq.empty():
-                break
+                print("Exiting streaming process")
+                return
 
 def receive_readings(q):
-    while True:
-        rs = [q.get()]
-        while not q.empty():
-            rs.append(q.get())
-        yield rs
+    try:
+        while True:
+            rs = [q.get(timeout=5.0)]
+            while not q.empty():
+                rs.append(q.get())
+            yield rs
+    except queue.Empty as ex:
+        print("ERROR: Failed to get readings from background process.")
+        
     
- 
+
+def tidalcalcs(statslen, sample_rate, inputq, finishq, outputq):
+    signal = np.zeros(statslen, dtype=np.float)
+    idx = 0
+    veaccum = deque(maxlen=3)
+    while True:
+        if not finishq.empty():
+            return
+        inputs = [inputq.get(timeout=5.0)]
+        while not inputq.empty():
+            inputs.append(inputq.get())
+        n = min(len(inputs), signal.size)
+        signal = np.roll(signal, -n) 
+        signal[-n:] = inputs[-n:]
+        try:
+            resp_extrema = biopeaks.resp.resp_extrema(signal, sample_rate)
+            sigs = signal[resp_extrema]
+            if len(resp_extrema) > 4:
+                if sigs[-1] < sigs[-2]:
+                    VTi = sigs[-2] - sigs[-3]
+                    VTe = sigs[-2] - sigs[-1]
+                else:
+                    VTe = sigs[-3] - sigs[-2]
+                    VTi = sigs[-1] - sigs[-2]
+                veaccum.append(VTe)
+                period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, sample_rate)
+                avgVTe = sum(veaccum)/len(veaccum)
+                mve = (rate[-1] * avgVTe)/1000.0
+                tidal = TidalData(VTi, VTe, rate[-1], mve)
+                outputq.put(tidal)
+        except:
+            print("Warning: tidal failed")
+
+        time.sleep(0.5)
+        
 
 def main():
-    print("splitvent monitoring by Joe Koberg et al, http://github.com/jkoberg/splitvent")
     args = parseArgs()
 
     reqsize = (1024, 600)
-    pygame.init()
 
     pygame.display.set_caption("splitvent")
     screen = pygame.display.set_mode(reqsize)
@@ -177,7 +220,7 @@ def main():
     width, height = size
 
     pygame.font.init()
-    font = pygame.font.SysFont("menlottc", 30)
+    font = pygame.font.SysFont(FONT, 30)
 
     linewidth = int(height / 200)
 
@@ -188,8 +231,8 @@ def main():
     srtimes.append(0.0)
 
     datalen = int(args.sample_rate * args.display_duration)
-    flowPoints = np.zeros(datalen)
-    volPoints = np.zeros(datalen)
+    flowPoints = np.zeros(datalen, dtype=float)
+    volPoints = np.zeros(datalen, dtype=float)
 
     wstep = int(width / 12.)
 
@@ -206,29 +249,36 @@ def main():
     vtitext =    TextRectRenderer(pygame.Rect(graphWidth, hstep*8,  textWidth, hstep*2), "VTi", "ml",    fontcolor=cyan,  borderwidth=linewidth)
     mvetext =    TextRectRenderer(pygame.Rect(graphWidth, hstep*10, textWidth, hstep*2), "MVe", "l/min", fontcolor=cyan,  borderwidth=linewidth)
 
-    bg = pygame.Surface(size)
-    bg.fill(background)
+    #bg = pygame.Surface(size)
+    #bg.fill(pygame.Color('#000000'))
 
-    pygame.draw.line(bg, border, (0, hstep*6), (width, hstep*6), linewidth)
+    #pygame.draw.line(bg, border, (0, hstep*6), (graphWidth, hstep*6), linewidth)
 
-    flowGraph.render_bg(bg)
-    volGraph.render_bg(bg)
-    rrText.render_bg(bg)
-    vteText.render_bg(bg)
-    vtitext.render_bg(bg)
-    mvetext.render_bg(bg)
+    flowGraph.render_bg(screen)
+    volGraph.render_bg(screen)
+    rrText.render_bg(screen)
+    vteText.render_bg(screen)
+    vtitext.render_bg(screen)
+    mvetext.render_bg(screen)
 
-    currentbg = bg
-    screen.blit(currentbg, (0,0))
+    #currentbg = bg
+    #screen.blit(currentbg, (0,0))
     pygame.display.update()
     
     resultq = mp.Queue()
+    resultq2 = mp.Queue()
+    tidalq = mp.Queue()
     finishq = mp.Queue()
-    child = mp.Process(
+    child1 = mp.Process(
         target = stream_readings,
-        args = (args.sensor_class, args.sample_rate, resultq, finishq)
+        args = (args.sensor_class, args.sample_rate, resultq, resultq2, finishq)
         )
-    child.start()
+    child1.start()
+    child2 = mp.Process(
+        target = tidalcalcs,
+        args = (datalen*2, args.sample_rate, resultq2, finishq, tidalq)
+        )
+    child2.start()
 
 
     try: # with args.sensor_class() as s:
@@ -237,7 +287,7 @@ def main():
 
         if args.log_data:
             datestr = time.strftime("%Y%m%d_%H%M%S", time.localtime(time.time()))
-            filename = "splitvent-sn{}-{}hz-{}.log".format(str(s.serial_number), int(args.sample_rate), datestr)
+            filename = "splitvent-{}hz-{}.log".format(int(args.sample_rate), datestr)
             logfile = open(filename, "w")
             print("logging to " + filename)
         else:
@@ -247,62 +297,47 @@ def main():
         #timed = free_running(readings) 
         #timed = sample_clock(readings, args.sample_rate)
 
-        timedgroups = receive_readings(resultq)
+        #timedgroups = receive_readings(resultq)
         #integrated = integrate_readings(timed, args.sample_rate)
-        integrated_groups = integrate_reading_groups(timedgroups, args.sample_rate)
+        integrated_groups = receive_readings(resultq)
         running = True
         last_tidal_time = 0.0
         last_tidal = None
         n = 0
         frames = 0
         t0 = None
-        print("Formatter, sr={}, datalen={}".format(args.sample_rate, datalen))
-        statsaccum = np.zeros(datalen*2)
-        veaccum = deque(maxlen=3)
+        tidal = None
         for group in integrated_groups:
-            tidal = None
             for r in group:
                 srtimes.append(r.t)
                 if t0 is None:
                     t0 = r.t
                 if logfile is not None:
                     logfile.write('{{"t":{:.6f}, "slm":{:.2f}}}\n'.format(r.t-t0, r.slm))
-                statsaccum = np.roll(statsaccum, -1)
-                statsaccum[-1] = r.V
-                try:
-                    if(r.n % args.sample_rate == 0): # compute tidal data once per second
-                        signal = statsaccum # np.array(statsaccum)
-                        resp_extrema = biopeaks.resp.resp_extrema(signal, args.sample_rate)
-                        sigs = signal[resp_extrema]
-                        if len(resp_extrema) > 4:
-                            if sigs[-1] < sigs[-2]:
-                                VTi = sigs[-2] - sigs[-3]
-                                VTe = sigs[-2] - sigs[-1]
-                            else:
-                                VTe = sigs[-3] - sigs[-2]
-                                VTi = sigs[-1] - sigs[-2]
-                            veaccum.append(VTe)
-                            period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, args.sample_rate)
-                            avgVTe = sum(veaccum)/len(veaccum)
-                            mve = (rate[-1] * avgVTe)/1000.0
-                            tidal = TidalData(VTi, VTe, rate[-1], mve)
-                except:
-                    pass
-
                 idx = n % datalen
                 flowPoints[idx] = r.slm
                 volPoints[idx] = r.V
                 n = n + 1
 
+            while not tidalq.empty():
+                tidal = tidalq.get()
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    running = False
+                    running = False 
                 elif event.type == pygame.KEYDOWN and event.key in [pygame.K_ESCAPE, pygame.K_q]:
                     running = False
             if not running:
                 break
 
-            screen.blit(currentbg, (0,0))
+            #screen.blit(currentbg, (0,0))
+
+            flowGraph.render_bg(screen)
+            volGraph.render_bg(screen)
+            rrText.render_bg(screen)
+            vteText.render_bg(screen)
+            vtitext.render_bg(screen)
+            mvetext.render_bg(screen)
 
             fpstimes.append(time.time())
 
@@ -313,34 +348,39 @@ def main():
                 volGraph.render(screen, idx, volPoints)
 
             if tidal is not None: # and tidal != last_tidal and (r.t - last_tidal_time > 0.5) :
-                last_tidal = tidal
-                last_tidal_time = r.t
-                currentbg = bg.copy()
-                fps = (len(fpstimes) - 1) / (fpstimes[-1] - fpstimes[0])
-                srcomputed = (len(srtimes) - 1) / (srtimes[-1] - srtimes[0])
-                textsurf = font.render(
-                    "{:4.0f} fps n={:10d} sr={:.2f}".format(fps, n, srcomputed),
-                    True,
-                    (255,255,255),
-                    (0,0,0)
-                )
-                currentbg.blit(textsurf, (0,0))
-                flowGraph.render_bg(currentbg)
-                volGraph.render_bg(currentbg)
-                rrText.render(currentbg, "{:5.1f}".format(tidal.RR))
-                vteText.render(currentbg,"{:5.0f}".format(tidal.VTe))
-                vtitext.render(currentbg, "{:5.0f}".format(tidal.VTi))
-                mvetext.render(currentbg, "{:5.1f}".format(tidal.MVe))
+                #currentbg = bg.copy()
+                #fps = (len(fpstimes) - 1) / (fpstimes[-1] - fpstimes[0])
+                #srcomputed = (len(srtimes) - 1) / (srtimes[-1] - srtimes[0])
+                #fpsmsg = "{:4.0f} fps n={:10d} g={} sr={:.2f}".format(fps, n, len(group), srcomputed)
+                #textsurf = font.render(
+                #    fpsmsg,
+                #    ANTIALIAS,
+                #    (255,255,255),
+                #    (0,0,0)
+                #)
+                #print(fpsmsg)
+                #screen.blit(textsurf, (0,0))
+                #flowGraph.render_bg(currentbg)
+                #volGraph.render_bg(currentbg)
+                rrText.render(screen, "{:5.1f}".format(tidal.RR))
+                vteText.render(screen,"{:5.0f}".format(tidal.VTe))
+                vtitext.render(screen, "{:5.0f}".format(tidal.VTi))
+                mvetext.render(screen, "{:5.1f}".format(tidal.MVe))
 
             if not args.quiet:
                 pygame.display.update()
+                screen.fill(black)
             frames = frames + 1
         print("Exiting normally.")
-        pygame.quit()
     finally:
         finishq.put("Finish")
-        child.join()
+        child1.join()
+        child2.join()
 
 
 if __name__=="__main__":
-    main()
+    try:
+        pygame.init()
+        main()
+    finally:
+        pygame.quit()
