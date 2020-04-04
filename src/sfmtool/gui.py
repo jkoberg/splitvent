@@ -245,7 +245,7 @@ def integrate_readings(timedReadings):
         fbuf.append(rawslm)
         if(len(fbuf) >= FILTER_TAP_NUM):
             slm = (FILTER_TAPS * fbuf).sum()
-            if last_slm < 0 and slm >= 0 and t > idled_until and (t > peak_until or V < V_peak*0.1):
+            if last_slm < 0 and slm >= 0:    # and t > idled_until and (t > peak_until or V < V_peak*0.1):
                 V = 0.0
                 V_peak = 0.0
                 peak_until = t + 10
