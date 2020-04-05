@@ -2,21 +2,30 @@
 import time, math, argparse, json, multiprocessing, queue
 import multiprocessing as mp
 from collections import deque, namedtuple
-print("splitvent monitoring system by Joe Koberg, March 2020.  https://github.com/jkoberg/splitvent")
-print("This work is provided under a Creative Commons Share Alike 4.0 license.")
-import pygame
-from pygame.locals import *
+
 import numpy as np
-from numpy import float
 import biopeaks.resp
 
+import scipy.signal
 
 from sfm3x00 import *
+from HoneywellSSC import *
 
+print("splitvent monitoring system by Joe Koberg, March 2020.  https://github.com/jkoberg/splitvent")
+print("This work is provided under a Creative Commons Share Alike 4.0 license.")
+
+import pygame
+from pygame.locals import *
+
+
+
+cmH2O_per_psi = 70.307
+
+yellow = (224, 224, 95)
 cyan = (127,255,223)
 yellow = (255, 255, 127)
 green = (64,255,64)
-border = (95,63,63)
+border = (63,63,63)
 black = (0,0,0)
 
 FONT = "liberationsans"
@@ -100,7 +109,7 @@ class TextRectRenderer(object):
         self.hA = self.height * 0.75
         self.hB = self.height * 0.25
         self.smallfont = pygame.font.SysFont(FONT, int(self.height * 0.15))
-        self.largefont = pygame.font.SysFont(FONT, int(self.height * 0.25))
+        self.largefont = pygame.font.SysFont(FONT, int(self.height * 0.30))
         self.headertxt = self.smallfont.render(header, ANTIALIAS,  fontcolor, bgcolor)
         self.unittxt = self.smallfont.render(unit, ANTIALIAS, fontcolor, bgcolor)
         self.C1 = (int(self.width / 2.0), int(self.height/8.0))
@@ -125,14 +134,14 @@ class TextRectRenderer(object):
 
 
 
-TidalData = namedtuple("TidalData", ["VTi", "VTe", "RR", "MVe"])
+TidalData = namedtuple("TidalData", ["VTi", "VTe", "RR", "MVe", "PPk", "PEEP"])
 
 
 def parseArgs():
     parser = argparse.ArgumentParser(description='Read data from Sensirion SFM3x00 sensor over I2C.')
 
-    parser.add_argument("--fake", dest='sensor_class',
-                        action='store_const', const=FakeSensor, default=SFM3x00,
+    parser.add_argument("--fake", dest='sensor_classes',
+                        action='store_const', const=(FakeSensor, FakeSensor), default=(SFM3x00, HoneywellSSC),
                         help='Use synthetic sensor data for demo')
 
     parser.add_argument("--samplerate", dest='sample_rate', type=float, default=50.0,
@@ -150,20 +159,85 @@ def parseArgs():
     return parser.parse_args()
 
 
-def stream_readings(sensorclass, samplerate, resultq1, resultq2, finishq):
-    with sensorclass() as s:
-        readings = s.readings()
-        for reading in integrate_readings(sample_clock(readings, samplerate), samplerate):
-            resultq1.put(reading)
-            resultq2.put(reading.V)
-            if not finishq.empty():
-                print("Exiting streaming process")
-                return
+
+FlowPressureReading = namedtuple("FlowPressureReading", ["slm", "cmH2O"])
+
+def combined_readings(flowClass, pressureClass):
+    with flowClass() as s:
+        with pressureClass() as p:
+            s.prepare()
+            p.prepare()
+            while True:
+                slm = s.read_scaled()
+                psig = p.read_scaled()
+                yield FlowPressureReading(slm, psig * cmH2O_per_psi)
+
+
+TReading = namedtuple("TReading", ["n", "t", "dT", "value"])
+
+def clocked(valueGenerator, sr=100.0, clock=time.time, sleep=time.sleep):
+    print("Clocked, sr={}".format(sr))
+    t0 = clock()
+    last_t = t0 - (1.0/sr)
+    n = 0
+    for v in valueGenerator:
+        t = clock()
+        deltaT = t - last_t
+        yield TReading(n, t, deltaT, v)
+        n = n + 1
+        last_t = t
+        t_sleep = max(0, ((n/sr) + t0) - t)
+        sleep(t_sleep)
+
+
+IntegratedVolume = namedtuple("IntegratedVolume", ["n", "t", "dT", "slm", "cmH2O", "dV", "V"])
+
+
+#def radspersamp(cutoffhz, sampleshz):
+#    return (cutoffhz * math.pi * 2)/sampleshz
+
+def makefilter(sr, taps=23):
+    return scipy.signal.firwin2(23, [0, 3, 6, sr/2], [1, 1, 0.0001, 0.0001], window="hamming", fs=sr)
+    #return scipy.signal.firwin(taps, radspersamp(3.0, sr), window='hamming')
+
+def integrate_readings(timedReadings, sr):
+    V = 0.0
+    idled_until = 0.0
+    peak_until = 0.0
+    last_slm = 0.0
+    V_peak = 0.0
+    taps = makefilter(sr)
+    fbuf = deque(maxlen=taps.size)
+
+    for (n, t, dT, (rawslm, cmH2O)) in timedReadings:
+        fbuf.append(rawslm)
+        if(len(fbuf) >= taps.size):
+            slm = (taps * fbuf).sum()
+            if last_slm < 0 and slm >= 0: # and t > idled_until and (t > peak_until or V < V_peak*0.1):
+                V = 0.0
+                V_peak = 0.0
+                peak_until = t + 10
+                idled_until = t + 0.25
+            last_slm = slm
+            dV = (dT * slm * 1000.0) / 60.0
+            V = V + dV
+            V_peak = max(V_peak, V)
+            yield IntegratedVolume(n, t, dT, slm, cmH2O, dV, V)
+
+VolumePressureReading = namedtuple("VolumePressureReading", ["V", "cmH2O"])
+
+def stream_readings(flowClass, pressureClass, samplerate, resultq1, resultq2, finishq):
+    for r in integrate_readings(clocked(combined_readings(flowClass, pressureClass), samplerate), samplerate):
+        resultq1.put(r)
+        resultq2.put(VolumePressureReading(r.V, r.cmH2O))
+        if not finishq.empty():
+          print("Exiting streaming process")
+          return
 
 def receive_readings(q):
     try:
         while True:
-            rs = [q.get(timeout=5.0)]
+            rs = [q.get(timeout=3.0)]
             while not q.empty():
                 rs.append(q.get())
             yield rs
@@ -174,17 +248,20 @@ def receive_readings(q):
 
 def tidalcalcs(statslen, sample_rate, inputq, finishq, outputq):
     signal = np.zeros(statslen, dtype=np.float)
+    pressures = np.zeros(statslen, dtype=np.float)
     idx = 0
     veaccum = deque(maxlen=3)
     while True:
         if not finishq.empty():
             return
-        inputs = [inputq.get(timeout=5.0)]
+        inputs = [inputq.get(timeout=3.0)]
         while not inputq.empty():
             inputs.append(inputq.get())
         n = min(len(inputs), signal.size)
         signal = np.roll(signal, -n) 
-        signal[-n:] = inputs[-n:]
+        pressures = np.roll(pressures, -n)
+        signal[-n:] = [i.V for i in inputs[-n:]]
+        pressures[-n:] = [i.cmH2O for i in inputs[-n:]]
         try:
             resp_extrema = biopeaks.resp.resp_extrema(signal, sample_rate)
             sigs = signal[resp_extrema]
@@ -199,18 +276,17 @@ def tidalcalcs(statslen, sample_rate, inputq, finishq, outputq):
                 period, rate, tidalAmp = biopeaks.resp.resp_stats(resp_extrema, signal, sample_rate)
                 avgVTe = sum(veaccum)/len(veaccum)
                 mve = (rate[-1] * avgVTe)/1000.0
-                tidal = TidalData(VTi, VTe, rate[-1], mve)
+                tidal = TidalData(VTi, VTe, rate[-1], mve, pressures.max(), pressures.min())
                 outputq.put(tidal)
         except:
             print("Warning: tidal failed")
-
         time.sleep(0.5)
         
 
 def main():
     args = parseArgs()
 
-    reqsize = (1024, 600)
+    reqsize = (1280, 720)
 
     pygame.display.set_caption("splitvent")
     screen = pygame.display.set_mode(reqsize)
@@ -229,31 +305,39 @@ def main():
     srtimes.append(0.0)
 
     datalen = int(args.sample_rate * args.display_duration)
+
     flowPoints = np.zeros(datalen, dtype=float)
     volPoints = np.zeros(datalen, dtype=float)
+    pressPoints = np.zeros(datalen, dtype=float)
 
     wstep = int(width / 12.)
 
-    graphWidth = wstep * 9
-    textWidth = wstep * 3
+    graphWidth = wstep * 10
+    textWidth = wstep * 2
 
     hstep = int(height / 12.)
 
-    flowGraph =  GraphRenderer((-50, 50), pygame.Rect(0, hstep*1,           graphWidth, hstep*4), green, linewidth)
-    volGraph =   GraphRenderer((-100, 1000), pygame.Rect(0, hstep*7,           graphWidth, hstep*4), cyan, linewidth)
+    pressGraph = GraphRenderer((0, 35),      pygame.Rect(0, hstep*0.5,         graphWidth, hstep*3), yellow , linewidth)
+    flowGraph =  GraphRenderer((-50, 50),    pygame.Rect(0, hstep*4.5,         graphWidth, hstep*3), green,   linewidth)
+    volGraph =   GraphRenderer((-100, 1000), pygame.Rect(0, hstep*8.5,         graphWidth, hstep*3), cyan,    linewidth)
 
-    rrText =     TextRectRenderer(pygame.Rect(graphWidth, 0,        textWidth, hstep*4), "RR", "b/min",     fontcolor=green, borderwidth=linewidth)
-    vteText = TextRectRenderer(pygame.Rect(graphWidth, hstep*4,  textWidth, hstep*4), "VTe", "ml", fontcolor=cyan,  borderwidth=linewidth)
-    vtitext =    TextRectRenderer(pygame.Rect(graphWidth, hstep*8,  textWidth, hstep*2), "VTi", "ml",    fontcolor=cyan,  borderwidth=linewidth)
-    mvetext =    TextRectRenderer(pygame.Rect(graphWidth, hstep*10, textWidth, hstep*2), "MVe", "l/min", fontcolor=cyan,  borderwidth=linewidth)
+    pressTest =  TextRectRenderer(pygame.Rect(graphWidth, 0,          textWidth, hstep*2.5), "Ppk",  "cm H2O", fontcolor=yellow, borderwidth=linewidth)
+    peepText =   TextRectRenderer(pygame.Rect(graphWidth, hstep*2.5,  textWidth, hstep*1.5), "PEEP", "cm H2O", fontcolor=yellow, borderwidth=linewidth)
+    rrText =     TextRectRenderer(pygame.Rect(graphWidth, hstep*4,    textWidth, hstep*2.5), "RR",   "b/min",  fontcolor=green,  borderwidth=linewidth)
+    vteText =    TextRectRenderer(pygame.Rect(graphWidth, hstep*6.5,  textWidth, hstep*2.5), "VTe",  "ml",     fontcolor=cyan,   borderwidth=linewidth)
+    vtitext =    TextRectRenderer(pygame.Rect(graphWidth, hstep*9,    textWidth, hstep*1.5), "VTi",  "ml",     fontcolor=cyan,   borderwidth=linewidth)
+    mvetext =    TextRectRenderer(pygame.Rect(graphWidth, hstep*10.5, textWidth, hstep*1.5), "MVe",  "l/min",  fontcolor=cyan,   borderwidth=linewidth)
 
     #bg = pygame.Surface(size)
     #bg.fill(pygame.Color('#000000'))
 
     #pygame.draw.line(bg, border, (0, hstep*6), (graphWidth, hstep*6), linewidth)
 
+    pressGraph.render_bg(screen)
     flowGraph.render_bg(screen)
     volGraph.render_bg(screen)
+    pressTest.render_bg(screen)
+    peepText.render_bg(screen)
     rrText.render_bg(screen)
     vteText.render_bg(screen)
     vtitext.render_bg(screen)
@@ -267,9 +351,10 @@ def main():
     resultq2 = mp.Queue()
     tidalq = mp.Queue()
     finishq = mp.Queue()
+    flowClass, pressureClass = args.sensor_classes
     child1 = mp.Process(
         target = stream_readings,
-        args = (args.sensor_class, args.sample_rate, resultq, resultq2, finishq)
+        args = (flowClass, pressureClass, args.sample_rate, resultq, resultq2, finishq)
         )
     child1.start()
     child2 = mp.Process(
@@ -298,7 +383,7 @@ def main():
         #timedgroups = receive_readings(resultq)
         #integrated = integrate_readings(timed, args.sample_rate)
         integrated_groups = receive_readings(resultq)
-        running = True
+        keepRunning = True
         last_tidal_time = 0.0
         last_tidal = None
         n = 0
@@ -315,6 +400,7 @@ def main():
                 idx = n % datalen
                 flowPoints[idx] = r.slm
                 volPoints[idx] = r.V
+                pressPoints[idx] = r.cmH2O
                 n = n + 1
 
             while not tidalq.empty():
@@ -322,16 +408,20 @@ def main():
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    running = False 
+                    keepRunning = False
                 elif event.type == pygame.KEYDOWN and event.key in [pygame.K_ESCAPE, pygame.K_q]:
-                    running = False
-            if not running:
+                    keepRunning = False
+
+            if not keepRunning:
                 break
 
             #screen.blit(currentbg, (0,0))
 
+            pressGraph.render_bg(screen)
             flowGraph.render_bg(screen)
             volGraph.render_bg(screen)
+            pressTest.render_bg(screen)
+            peepText.render_bg(screen) 
             rrText.render_bg(screen)
             vteText.render_bg(screen)
             vtitext.render_bg(screen)
@@ -344,6 +434,9 @@ def main():
 
             if len(volPoints) > 2:
                 volGraph.render(screen, idx, volPoints)
+
+            if len(pressPoints) > 2:
+                pressGraph.render(screen, idx, pressPoints)
 
             if tidal is not None: # and tidal != last_tidal and (r.t - last_tidal_time > 0.5) :
                 #currentbg = bg.copy()
@@ -360,6 +453,8 @@ def main():
                 #screen.blit(textsurf, (0,0))
                 #flowGraph.render_bg(currentbg)
                 #volGraph.render_bg(currentbg)
+                pressTest.render(screen, "{:5.1f}".format(tidal.PPk))
+                peepText.render(screen, "{:5.1f}".format(tidal.PEEP))
                 rrText.render(screen, "{:5.1f}".format(tidal.RR))
                 vteText.render(screen,"{:5.0f}".format(tidal.VTe))
                 vtitext.render(screen, "{:5.0f}".format(tidal.VTi))
