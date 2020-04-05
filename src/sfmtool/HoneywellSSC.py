@@ -100,7 +100,7 @@ class HoneywellSSC(object):
         return pressure_raw
 
     def scale_value(self, reported):
-        return ((self.scale_factor * (reported - self.transferfunc.report_min)) + self.range.min) * self.range.conv_factor
+        return ((self.scale_factor * (reported - self.transferfunc.report_min)) + self.range.min) * self.range.convFactor
 
     def prepare(self):
         pass
