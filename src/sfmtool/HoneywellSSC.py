@@ -3,13 +3,13 @@ from fcntl import ioctl
 import math, struct, time, collections, argparse, multiprocessing
 from collections import namedtuple
 
-import numpy as np
-import biopeaks.resp
 
 """Pure-python interface for Honeywell TruStability SSC-series pressure sensors"""
 
-I2C_SLAVE                        = 0x0703  #  Linux Kernel Constant
+I2C_SLAVE                        = 0x0703  #  Linux Kernel Constant for ioctl on /dev/i2c-*
+
 RASPI_DEFAULT_I2C_BUS            = 1
+
 HONEYWELL_SSC_DEFAULT_I2C_ADDR_2 = 0x28
 HONEYWELL_SSC_DEFAULT_I2C_ADDR_3 = 0x38
 HONEYWELL_SSC_DEFAULT_I2C_ADDR_4 = 0x48
@@ -17,25 +17,35 @@ HONEYWELL_SSC_DEFAULT_I2C_ADDR_5 = 0x58
 HONEYWELL_SSC_DEFAULT_I2C_ADDR_6 = 0x68
 HONEYWELL_SSC_DEFAULT_I2C_ADDR_7 = 0x78
 
-HoneywellSSCRange = namedtuple("HoneywellSSCRange", ["min", "max", "unit"])
+
+HoneywellSSCRange = namedtuple("HoneywellSSCRange", ["min", "max", "unit", "convFactor"])
 HoneywellSSCTransferFunction = namedtuple("HoneywellSSCTransferFunction", ["report_min", "report_max"])
 
-HONEYWELL_SSC_RANGECODE_015PG = HoneywellSSCRange(0.0, 15.0, "psig")
+cmH2O_per_psi = 70.307
 
+HONEYWELL_SSC_RANGES = {
+    '005PG': HoneywellSSCRange(0.0,  5.0, "psig", cmH2O_per_psi),
+    '015PG': HoneywellSSCRange(0.0, 15.0, "psig", cmH2O_per_psi),
+}
+
+HONEYWELL_TRANSFER_FUNCS = {
+    "A": HoneywellSSCTransferFunction(0.10 * 2**14,  0.90 * 2**14),
+    "B": HoneywellSSCTransferFunction(0.05 * 2**14,  0.95 * 2**14),
+    "C": HoneywellSSCTransferFunction(0.05 * 2**14,  0.85 * 2**14),
+    "F": HoneywellSSCTransferFunction(0.04 * 2**14,  0.94 * 2**14)
+}
 HONEYWELL_SSC_TRANSFERFUNC_A = HoneywellSSCTransferFunction(2**14 * 0.10, 2**14 * 0.90)
 
 cmH2OReading = namedtuple("cmH2OReading", ["cmH2O"])
 
-cmH2O_per_psi = 70.307
 
 class HoneywellSSC(object):
     """Read Honeywell SSC sensor readings over I2C"""
 
-    def __init__(self, range=HONEYWELL_SSC_RANGECODE_015PG, transferfunc=HONEYWELL_SSC_TRANSFERFUNC_A, address=HONEYWELL_SSC_DEFAULT_I2C_ADDR_2, bus=RASPI_DEFAULT_I2C_BUS):
+    def __init__(self, range=HONEYWELL_SSC_RANGES['015PG'], transferfunc=HONEYWELL_TRANSFER_FUNCS['A'], address=HONEYWELL_SSC_DEFAULT_I2C_ADDR_2, bus=RASPI_DEFAULT_I2C_BUS):
         self.range = range
         self.transferfunc = transferfunc
-        self.report_scale = self.transferfunc.report_max - self.transferfunc.report_min
-        self.measured_scale = self.range.max - self.range.min
+        self.scale_factor = (self.range.max - self.range.min) / (self.transferfunc.report_max - self.transferfunc.report_min)
         self.address = address
         self._device = None
         if bus is not None:
@@ -50,12 +60,12 @@ class HoneywellSSC(object):
         devicename = '/dev/i2c-{0}'.format(bus)
         try:
             self._device = open(devicename, 'r+b', buffering=0)
+            self._select_device(self.address)
             print('Opened {} for device communications'.format(devicename))
         except IOError:
             print('Unable to open port {} for device communications'.format(devicename))
             print('Use the --fake flag to simulate a device for testing')
             raise
-        self._select_device(self.address)
 
     def close(self):
         if self._device is not None:
@@ -90,7 +100,7 @@ class HoneywellSSC(object):
         return pressure_raw
 
     def scale_value(self, reported):
-        return (self.measured_scale * ((reported - self.transferfunc.report_min)/self.report_scale)) + self.range.min
+        return ((self.scale_factor * (reported - self.transferfunc.report_min)) + self.range.min) * self.range.conv_factor
 
     def prepare(self):
         pass
@@ -98,7 +108,4 @@ class HoneywellSSC(object):
     def read_scaled(self):
         return self.scale_value(self.read_value())
 
-    def readings(self):
-        self.prepare()
-        while True:
-            yield cmH2OReading(self.read_scaled() * cmH2O_per_psi)
+
