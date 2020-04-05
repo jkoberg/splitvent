@@ -39,6 +39,8 @@ TimedReading = collections.namedtuple("TimedReading", ["slm", "n", "t", "dt"])
 
 TotalizedReading = collections.namedtuple("TotalizedReading", ["slm", "n", "t", "dt", "dV", "V"])
 
+TReading = collections.namedtuple("TReading", ["n", "t", "dT", "value"])
+
 class SFM3x00(object):
     """Read Sensirion SFM3x00 sensor readings over I2C"""
     
@@ -116,14 +118,19 @@ class SFM3x00(object):
     def scale_value(self, value):
         return (value - self.offset) / self.scale
 
-    def readings(self):
-        self.start_sensor() 
+    def prepare(self):
+        self.start_sensor()
         time.sleep(0.100)
-        self.read_value() # throw away the first read value
+        self.read_value()
+
+    def read_scaled(self):
+        value = self.read_value()
+        return self.scale_value(value)
+
+    def readings(self):
+        self.prepare()
         while True:
-            value = self.read_value()
-            slm = self.scale_value(value)
-            yield SfmReading(slm)
+            yield SfmReading(self.read_scaled())
 
 
 class FakeSensor(object):
@@ -137,6 +144,12 @@ class FakeSensor(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         return False
 
+    def prepare(self):
+        pass
+
+    def read_scaled(self):
+        return 0.0
+
     def readings(self):
         n = 0
         while True:
@@ -145,6 +158,7 @@ class FakeSensor(object):
             slm = 60 * math.sin(v * 2 * math.pi)
             yield SfmReading(slm)
             n = (n + 1) % 750
+
 
 
 def sample_clock(valueGenerator, sr=100.0, clock=time.time, sleep=time.sleep):
@@ -161,6 +175,8 @@ def sample_clock(valueGenerator, sr=100.0, clock=time.time, sleep=time.sleep):
         last_t = t
         t_sleep = max(0, ((n * dwell) + t0) - t)
         sleep(t_sleep)
+
+
 
 def free_running(valueGenerator, clock=time.time):
     print("Free Running")
