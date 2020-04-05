@@ -151,9 +151,11 @@ def parseArgs():
 
     parser.add_argument("--height", dest='req_h', default=720, type=int, help="Requested display height")
 
-    parser.add_argument("--sscrange", dest='ssc_range_code', default='015PG', type=str, help="Honeywell SSC sensor range code")
+    parser.add_argument("--readlog", dest='read_log', default=None, help="Read sensor data from log file")
 
-    parser.add_argument("--sscxfer", dest='ssc_xfer_func', default='A', type=str, help="Honeywell SSC sensor transfer function code")
+    #parser.add_argument("--sscrange", dest='ssc_range_code', default='015PG', type=str, help="Honeywell SSC sensor range code")
+
+    #parser.add_argument("--sscxfer", dest='ssc_xfer_func', default='A', type=str, help="Honeywell SSC sensor transfer function code")
 
     return parser.parse_args()
 
@@ -225,17 +227,17 @@ def guiMain(args):
 
     flowClass, pressureClass = args.sensor_classes
 
-    child1 = mp.Process(
+    sensorChildProcess = mp.Process(
         target = stream_readings,
         args = (flowClass, pressureClass, args.sample_rate, resultq, tidalInputQueue, finishq)
         )
-    child1.start()
+    sensorChildProcess.start()
 
-    child2 = mp.Process(
+    tidalCalcsChildProcess = mp.Process(
         target = tidalcalcs,
         args = (datalen*2, args.sample_rate, tidalInputQueue, finishq, tidalOutputQueue)
         )
-    child2.start()
+    tidalCalcsChildProcess.start()
 
     try:
         print("Formatter, sr={}, datalen={}".format(args.sample_rate, datalen))
@@ -318,8 +320,8 @@ def guiMain(args):
         print("Exiting normally.")
     finally:
         finishq.put("Finish")
-        child1.join()
-        child2.join()
+        sensorChildProcess.join()
+        tidalCalcsChildProcess.join()
 
 
 if __name__=="__main__":
