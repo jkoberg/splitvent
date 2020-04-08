@@ -92,16 +92,20 @@ IntegratedVolume = namedtuple("IntegratedVolume", ["n", "t", "dT", "slm", "cmH2O
 
 def integrate_readings(timedReadings, sr):
     V = 0.0
-    last_slm = 0.0
+    last_filtered_slm = 0.0
     taps = makefilter(sr)
+    buffer = deque(maxlen=taps.size)
     fbuf = CircularBuffer(taps.size)
-    for (n, t, dT, (rawslm, cmH2O)) in timedReadings:
-        fbuf.append(rawslm)
+    coincident_idx = taps.size // 2
+    for tup in timedReadings:
+        buffer.append(tup)
+        fbuf.append(tup.value.slm)
         if fbuf.full:
-            slm = (taps * fbuf.ordered()).sum()
-            if last_slm < 0 <= slm:
+            filtered_slm = (taps * fbuf.ordered()).sum()
+            if last_filtered_slm < 0 <= filtered_slm:
                 V = 0.0
-            last_slm = slm
+            last_filtered_slm = filtered_slm
+            (n, t, dT, (slm, cmH2O)) = buffer[coincident_idx]
             dV = (dT * slm * 1000.0) / 60.0
             V = V + dV
             yield IntegratedVolume(n, t, dT, slm, cmH2O, dV, V)
